@@ -85,11 +85,51 @@ const fieldLabels: Record<string, string> = {
   montosPorCredito: "montos por credito",
 };
 
-const describePatch = (patch: Record<string, unknown>) => {
-  const fields = Object.keys(patch).filter((key) => patch[key] !== undefined);
-  if (!fields.length) return "Sin campos modificados.";
-  const labels = fields.map((key) => fieldLabels[key] ?? key);
-  return `Campos modificados: ${labels.join(", ")}.`;
+const normalizeAuditValue = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") return "sin dato";
+  if (typeof value === "boolean") return value ? "si" : "no";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "sin dato";
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${key}: ${normalizeAuditValue(item)}`)
+      .join(", ") || "sin dato";
+  }
+  return String(value);
+};
+
+const auditValuesAreEqual = (before: unknown, after: unknown) =>
+  normalizeAuditValue(before).trim() === normalizeAuditValue(after).trim();
+
+const getPatchChanges = <T extends object>(current: T | undefined, patch: Partial<T>) =>
+  Object.entries(patch)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, after]) => ({
+      key,
+      label: fieldLabels[key] ?? key,
+      before: current?.[key as keyof T],
+      after,
+    }))
+    .filter((change) => !auditValuesAreEqual(change.before, change.after));
+
+const describeChanges = <T extends object>(current: T | undefined, patch: Partial<T>) => {
+  const changes = getPatchChanges(current, patch);
+  if (!changes.length) return "Sin cambios reales.";
+
+  if (changes.length === 1) {
+    const change = changes[0];
+    return `${change.label} actualizado: antes "${normalizeAuditValue(change.before)}", ahora "${normalizeAuditValue(change.after)}".`;
+  }
+
+  return `Cambios realizados: ${changes
+    .map((change) => `${change.label}: antes "${normalizeAuditValue(change.before)}", ahora "${normalizeAuditValue(change.after)}"`)
+    .join("; ")}.`;
+};
+
+const buildPersonaAuditAction = (persona: Emprendedor | undefined, patch: Partial<Emprendedor>) => {
+  const changes = getPatchChanges(persona, patch);
+  if (changes.length === 1) return `${changes[0].label} actualizado`;
+  if (changes.length > 1) return "Persona actualizada";
+  return "Persona revisada";
 };
 
 const createMovimiento = (input: AuditInput, usuarioEmail?: string): MovimientoHistorial => {
@@ -343,7 +383,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "cobro",
         accion,
-        detalle: describePatch(patch),
+        detalle: describeChanges(cobroActual, patch),
         entidadId: id,
         personaId: persona?.id ?? cobroActual?.emprendedorId,
         personaNombre: persona?.nombre,
@@ -363,7 +403,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "ces",
         accion,
-        detalle: describePatch(patch),
+        detalle: describeChanges(pagoActual, patch),
         entidadId: id,
         personaId: persona?.id ?? pagoActual?.emprendedorId,
         personaNombre: persona?.nombre,
@@ -380,7 +420,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "configuracion",
         accion: "Datos del centro actualizados",
-        detalle: describePatch(patch),
+        detalle: describeChanges(current.centro, patch),
         entidadId: current.centro.idCentro,
       }, options.updatedBy),
     );
@@ -399,7 +439,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "configuracion",
         accion: "Semana de cobro actualizada",
-        detalle: `${periodo ? `Cuota ${periodo.numeroCuota}. ` : ""}${describePatch(patch)}`,
+        detalle: `${periodo ? `Cuota ${periodo.numeroCuota}. ` : ""}${describeChanges(periodo, patch)}`,
         entidadId: id,
       }, options.updatedBy);
     });
@@ -429,8 +469,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
         updatedAt: new Date().toISOString(),
       }, {
         tipo: "persona",
-        accion: "Persona actualizada",
-        detalle: describePatch(patch),
+        accion: buildPersonaAuditAction(persona, patch),
+        detalle: describeChanges(persona, patch),
         entidadId: id,
         personaId: id,
         personaNombre: patch.nombre ?? persona?.nombre,
@@ -463,10 +503,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "configuracion",
         accion: "Configuracion CES actualizada",
-        detalle: describePatch({
-          ...patch,
-          fechaVencimientoCes: patch.fechaVencimiento,
-        }),
+        detalle: describeChanges(current.configuracion.ces, patch),
       }, options.updatedBy);
     });
   };
@@ -486,7 +523,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "configuracion",
         accion: "Seguridad actualizada",
-        detalle: describePatch(patch),
+        detalle: describeChanges(current.configuracion.seguridad, patch),
       }, options.updatedBy),
     );
   };
@@ -714,7 +751,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "reunion",
         accion: "Reunion actualizada",
-        detalle: `${reunion?.titulo ?? "Reunion"}. ${describePatch(patch)}`,
+        detalle: `${reunion?.titulo ?? "Reunion"}. ${describeChanges(reunion, patch)}`,
         entidadId: id,
       }, options.updatedBy);
     });
@@ -745,6 +782,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     setState((current) => {
       const reunion = current.reuniones.find((item) => item.id === reunionId);
       const persona = current.emprendedores.find((item) => item.id === emprendedorId);
+      const asistenciaActual = reunion?.asistencias.find((asistencia) => asistencia.emprendedorId === emprendedorId);
 
       return withMovimiento({
         ...current,
@@ -762,7 +800,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       }, {
         tipo: "asistencia",
         accion: "Asistencia actualizada",
-        detalle: `${reunion?.titulo ?? "Reunion"}. ${describePatch(patch)}${patch.estado ? ` Estado: ${patch.estado}.` : ""}`,
+        detalle: `${reunion?.titulo ?? "Reunion"}. ${describeChanges(asistenciaActual, patch)}`,
         entidadId: reunionId,
         personaId: persona?.id ?? emprendedorId,
         personaNombre: persona?.nombre,
