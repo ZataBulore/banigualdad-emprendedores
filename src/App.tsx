@@ -102,6 +102,8 @@ const personaEstadoLabels: Record<EstadoPersona, string> = {
   de_baja: "De baja",
 };
 
+const INTERES_PERSONA_LABEL = "Monto de interes";
+
 const confirmarAccionCritica = (mensaje: string) => window.confirm(mensaje);
 
 const metodoOptions: { label: string; value: MetodoPago }[] = [
@@ -337,8 +339,8 @@ const validatePersonaForm = (
     errors.creditoOriginal = "El credito debe ser mayor a cero.";
   }
 
-  if (!Number.isInteger(form.anillo) || form.anillo < 0) {
-    errors.anillo = "El anillo debe ser un numero entero igual o mayor a cero.";
+  if (!Number.isFinite(form.anillo) || form.anillo < 0) {
+    errors.anillo = "El monto de interes debe ser igual o mayor a cero.";
   }
 
   if ((form.notas ?? "").length > 200) {
@@ -2134,7 +2136,15 @@ function ConfigPanel({
                 </>
               )}
               <ConfigInput label="Credito original" type="number" value={String(persona.creditoOriginal)} onChange={(value) => onPersona(persona.id, { creditoOriginal: Number(value || 0) })} />
-              <ConfigInput label="Anillo" type="number" value={String(persona.anillo)} onChange={(value) => onPersona(persona.id, { anillo: Number(value || 0) })} />
+              <ConfigInput
+                label={INTERES_PERSONA_LABEL}
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={String(persona.anillo)}
+                onChange={(value) => onPersona(persona.id, { anillo: Number(value || 0) })}
+              />
               <ConfigInput label="Notas" value={persona.notas ?? ""} onChange={(value) => onPersona(persona.id, { notas: value })} />
             </article>
           ))}
@@ -2517,13 +2527,13 @@ function PersonaEditModal({
             />
           </ModalField>
 
-          <ModalField label="Anillo" error={touched ? errors.anillo : undefined}>
+          <ModalField label={INTERES_PERSONA_LABEL} error={touched ? errors.anillo : undefined}>
             <input
               type="number"
               min="0"
               step="1"
               inputMode="numeric"
-              value={form.anillo}
+              value={form.anillo || ""}
               onChange={(event) => updateForm("anillo", Number(event.target.value || 0))}
               onBlur={() => setTouched(true)}
             />
@@ -2813,16 +2823,29 @@ function ConfigInput({
   value,
   onChange,
   type = "text",
+  min,
+  step,
+  inputMode,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: "text" | "number" | "date";
+  min?: string;
+  step?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <label className="config-field">
       <span>{label}</span>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input
+        type={type}
+        min={min}
+        step={step}
+        inputMode={inputMode}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </label>
   );
 }
