@@ -30,6 +30,19 @@ const crearAsistenciasBase = (emprendedores: Emprendedor[]) =>
     observacion: "",
   }));
 
+const normalizarCorreos = (emails: string[]) =>
+  Array.from(
+    new Set(
+      emails
+        .flatMap((email) => email.split(/[,\n;]/))
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+const getCorreosBaseKey = () =>
+  normalizarCorreos(configuracionInicial.seguridad.correosAutorizados).join("|");
+
 const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): Reunion => {
   const existentes = new Map((reunion.asistencias ?? []).map((asistencia) => [asistencia.emprendedorId, asistencia]));
 
@@ -51,6 +64,13 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
   const cobrosActuales = new Map((state.cobros ?? []).map((cobro) => [cobro.id, cobro]));
   const periodosIniciales = new Set(tesoreriaInicial.periodos.map((periodo) => periodo.id));
   const cobrosIniciales = new Set(tesoreriaInicial.cobros.map((cobro) => cobro.id));
+  const correosBaseKey = getCorreosBaseKey();
+  const seguridadActual = state.configuracion?.seguridad;
+  const correosGuardados = seguridadActual?.correosAutorizados ?? [];
+  const correosAutorizados =
+    seguridadActual?.correosBaseSincronizados === correosBaseKey
+      ? normalizarCorreos(correosGuardados)
+      : normalizarCorreos([...correosGuardados, ...configuracionInicial.seguridad.correosAutorizados]);
   const configuracion = {
     ...configuracionInicial,
     ...(state.configuracion ?? {}),
@@ -65,7 +85,8 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
     seguridad: {
       ...configuracionInicial.seguridad,
       ...(state.configuracion?.seguridad ?? {}),
-      correosAutorizados: state.configuracion?.seguridad?.correosAutorizados ?? configuracionInicial.seguridad.correosAutorizados,
+      correosAutorizados,
+      correosBaseSincronizados: correosBaseKey,
     },
   };
 

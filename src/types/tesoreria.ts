@@ -25,6 +25,7 @@ export interface ConfiguracionSistema {
 
 export interface ConfiguracionSeguridad {
   correosAutorizados: string[];
+  correosBaseSincronizados?: string;
 }
 
 export interface Emprendedor {
