@@ -1527,7 +1527,7 @@ function AsistenciasPanel({
                   />
                 </label>
                 <button className="mark-all-present-button" onClick={marcarTodos}>
-                  <CheckCircle2 size={17} /> Todos presentes
+                  <CheckCircle2 size={17} /> Marcar a todos presentes
                 </button>
               </section>
 
