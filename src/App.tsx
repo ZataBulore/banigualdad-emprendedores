@@ -7,19 +7,24 @@ import {
   Download,
   FileImage,
   History,
+  Landmark,
+  Pencil,
   RotateCcw,
   Search,
+  SlidersHorizontal,
   Upload,
   WalletCards,
+  X,
 } from "lucide-react";
 import { ChangeEvent, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
-import type { CobroSemanal, Emprendedor, EstadoPago, MetodoPago, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ConfiguracionCes, Emprendedor, EstadoPago, MetodoPago, PagoCes, Periodo, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
-type Tab = "cobros" | "personas" | "respaldo";
+type Tab = "cobros" | "ces" | "personas" | "respaldo" | "config";
 type FiltroEstado = "todos" | EstadoPago;
+type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "creditoOriginal" | "anillo" | "notas">;
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -38,14 +43,87 @@ const metodoOptions: { label: string; value: MetodoPago }[] = [
   { label: "Otro", value: "otro" },
 ];
 
+const cleanRut = (rut: string) => rut.replace(/[.\-\s]/g, "").toUpperCase();
+
+const formatRut = (rut: string) => {
+  const cleaned = cleanRut(rut);
+  if (cleaned.length < 2) return cleaned;
+  const body = cleaned.slice(0, -1);
+  const dv = cleaned.slice(-1);
+  return `${body.replace(/\B(?=(\d{3})+(?!\d))/g, ".")}-${dv}`;
+};
+
+const isValidRut = (rut: string) => {
+  const cleaned = cleanRut(rut);
+  if (!/^\d{7,8}[\dK]$/.test(cleaned)) return false;
+
+  const body = cleaned.slice(0, -1);
+  const dv = cleaned.slice(-1);
+  let sum = 0;
+  let multiplier = 2;
+
+  for (let index = body.length - 1; index >= 0; index -= 1) {
+    sum += Number(body[index]) * multiplier;
+    multiplier = multiplier === 7 ? 2 : multiplier + 1;
+  }
+
+  const result = 11 - (sum % 11);
+  const expected = result === 11 ? "0" : result === 10 ? "K" : String(result);
+  return dv === expected;
+};
+
+const validatePersonaForm = (
+  form: PersonaForm,
+  personas: Emprendedor[],
+  personaId: string,
+) => {
+  const errors: Partial<Record<keyof PersonaForm, string>> = {};
+  const rutNormalizado = cleanRut(form.rut);
+
+  if (form.nombre.trim().length < 3) {
+    errors.nombre = "Ingresa un nombre de al menos 3 caracteres.";
+  }
+
+  if (!isValidRut(form.rut)) {
+    errors.rut = "El RUT no es valido. Revisa numero y digito verificador.";
+  } else if (
+    personas.some((persona) => persona.id !== personaId && cleanRut(persona.rut) === rutNormalizado)
+  ) {
+    errors.rut = "Este RUT ya esta registrado en otra persona.";
+  }
+
+  if (!Number.isFinite(form.creditoOriginal) || form.creditoOriginal <= 0) {
+    errors.creditoOriginal = "El credito debe ser mayor a cero.";
+  }
+
+  if (!Number.isInteger(form.anillo) || form.anillo < 0) {
+    errors.anillo = "El anillo debe ser un numero entero igual o mayor a cero.";
+  }
+
+  if ((form.notas ?? "").length > 200) {
+    errors.notas = "La nota no puede superar 200 caracteres.";
+  }
+
+  return errors;
+};
+
 function App() {
   const {
     state,
     personasPorId,
+    updateCentro,
+    updatePeriodo,
+    updateEmprendedor,
+    updateConfiguracionCes,
+    recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
+    marcarCesPagado,
+    cambiarEstadoCes,
     registrarMonto,
+    registrarMontoCes,
     actualizarDetalle,
+    actualizarDetalleCes,
     importar,
     resetear,
   } = useTesoreria();
@@ -54,11 +132,13 @@ function App() {
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [busqueda, setBusqueda] = useState("");
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
+  const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const periodo = state.periodos.find((item) => item.id === periodoId) ?? state.periodos[0];
   const cobrosPeriodo = state.cobros.filter((cobro) => cobro.periodoId === periodo?.id);
   const totals = getPeriodoTotals(cobrosPeriodo);
+  const cesTotals = getPeriodoTotals(state.pagosCes);
 
   const cobrosFiltrados = useMemo(() => {
     const normalizedSearch = busqueda.trim().toLowerCase();
@@ -74,6 +154,21 @@ function App() {
       return matchesEstado && matchesSearch;
     });
   }, [busqueda, cobrosPeriodo, filtroEstado, personasPorId]);
+
+  const pagosCesFiltrados = useMemo(() => {
+    const normalizedSearch = busqueda.trim().toLowerCase();
+
+    return state.pagosCes.filter((pago) => {
+      const persona = personasPorId.get(pago.emprendedorId);
+      const matchesEstado = filtroEstado === "todos" || pago.estadoPago === filtroEstado;
+      const matchesSearch =
+        !normalizedSearch ||
+        persona?.nombre.toLowerCase().includes(normalizedSearch) ||
+        persona?.rut.toLowerCase().includes(normalizedSearch);
+
+      return matchesEstado && matchesSearch;
+    });
+  }, [busqueda, filtroEstado, personasPorId, state.pagosCes]);
 
   const personaSeleccionada = personaActiva
     ? state.emprendedores.find((persona) => persona.id === personaActiva)
@@ -91,15 +186,17 @@ function App() {
 
   const exportarCsv = () => {
     const rows = [
-      ["periodo", "vencimiento", "nombre", "rut", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "observacion"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "observacion"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
         return [
+          "cuota",
           cobroPeriodo?.numeroCuota ?? "",
           cobroPeriodo?.fechaVencimiento ?? "",
           persona?.nombre ?? "",
           persona?.rut ?? "",
+          persona?.creditoOriginal ?? "",
           cobro.cuota,
           cobro.seguro,
           cobro.totalEsperado,
@@ -108,6 +205,25 @@ function App() {
           cobro.fechaPago,
           cobro.metodoPago,
           cobro.observacion,
+        ];
+      }),
+      ...state.pagosCes.map((pago) => {
+        const persona = personasPorId.get(pago.emprendedorId);
+        return [
+          "ces",
+          "CES",
+          pago.fechaVencimiento,
+          persona?.nombre ?? "",
+          persona?.rut ?? "",
+          pago.creditoBase,
+          "",
+          "",
+          pago.totalEsperado,
+          pago.montoPagado,
+          pago.estadoPago,
+          pago.fechaPago,
+          pago.metodoPago,
+          pago.observacion,
         ];
       }),
     ];
@@ -189,7 +305,8 @@ function App() {
         <div className="reconcile-strip">
           <span>Total hoja: <strong>{formatCurrency(periodo.totalCentro)}</strong></span>
           <span>Suma cards: <strong>{formatCurrency(totals.esperado)}</strong></span>
-          <span>Diferencia: <strong>{formatCurrency(periodo.totalCentro - totals.esperado)}</strong></span>
+          <span>Diferencia hoja: <strong>{formatCurrency(periodo.totalCentro - totals.esperado)}</strong></span>
+          <span>CES total: <strong>{formatCurrency(cesTotals.esperado)}</strong></span>
         </div>
       )}
 
@@ -197,11 +314,17 @@ function App() {
         <button className={tab === "cobros" ? "active" : ""} onClick={() => setTab("cobros")}>
           <WalletCards size={18} /> Cobros
         </button>
+        <button className={tab === "ces" ? "active" : ""} onClick={() => setTab("ces")}>
+          <Landmark size={18} /> CES
+        </button>
         <button className={tab === "personas" ? "active" : ""} onClick={() => setTab("personas")}>
           <History size={18} /> Personas
         </button>
         <button className={tab === "respaldo" ? "active" : ""} onClick={() => setTab("respaldo")}>
           <Download size={18} /> Respaldo
+        </button>
+        <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
+          <SlidersHorizontal size={18} /> Config
         </button>
       </nav>
 
@@ -249,6 +372,83 @@ function App() {
                   onEstado={(estado) => cambiarEstado(cobro.id, estado)}
                   onMonto={(monto) => registrarMonto(cobro.id, monto)}
                   onDetalle={(detail) => actualizarDetalle(cobro.id, detail)}
+                  onEditarPersona={() => setPersonaEditando(persona)}
+                  onPersona={() => {
+                    setPersonaActiva(persona.id);
+                    setTab("personas");
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {tab === "ces" && (
+        <section className="workspace">
+          <section className="ces-header">
+            <div>
+              <p className="eyebrow">Pago CES</p>
+              <h2>Montos estaticos por credito</h2>
+              <span className="section-subtitle">Vencimiento: {formatDate(state.pagosCes[0]?.fechaVencimiento ?? "2026-06-08")}</span>
+            </div>
+            <div className="ces-rules">
+              {Object.entries(state.configuracion.ces.montosPorCredito).map(([credito, monto]) => (
+                <span key={credito}>{formatCurrency(Number(credito))}: {formatCurrency(monto)}</span>
+              ))}
+            </div>
+          </section>
+
+          <section className="summary-grid compact">
+            <SummaryCard icon={<Landmark />} label="CES esperado" value={formatCurrency(cesTotals.esperado)} />
+            <SummaryCard icon={<CheckCircle2 />} label="CES pagado" value={formatCurrency(cesTotals.pagado)} tone="success" />
+            <SummaryCard icon={<WalletCards />} label="CES pendiente" value={formatCurrency(cesTotals.saldo)} tone="warning" />
+            <SummaryCard icon={<History />} label="Avance CES" value={`${Math.min(cesTotals.avance, 100)}%`} tone="info" />
+          </section>
+
+          <div className="toolbar">
+            <label className="search-box">
+              <Search size={18} />
+              <input
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Buscar nombre o RUT"
+              />
+            </label>
+            <div className="chips" role="list" aria-label="Filtrar por estado CES">
+              {estadoOptions.map((estado) => (
+                <button
+                  key={estado}
+                  className={filtroEstado === estado ? "chip active" : "chip"}
+                  onClick={() => setFiltroEstado(estado)}
+                >
+                  {estado === "todos" ? "Todos" : estadoLabels[estado]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="status-counts">
+            <span>{cesTotals.pagados} pagados</span>
+            <span>{cesTotals.parciales} parciales</span>
+            <span>{cesTotals.pendientes} pendientes</span>
+            <span>{cesTotals.atrasados} atrasados</span>
+          </div>
+
+          <div className="cards-grid">
+            {pagosCesFiltrados.map((pago) => {
+              const persona = personasPorId.get(pago.emprendedorId);
+              if (!persona) return null;
+              return (
+                <CesCard
+                  key={pago.id}
+                  pago={pago}
+                  persona={persona}
+                  onPagar={() => marcarCesPagado(pago.id)}
+                  onEstado={(estado) => cambiarEstadoCes(pago.id, estado)}
+                  onMonto={(monto) => registrarMontoCes(pago.id, monto)}
+                  onDetalle={(detail) => actualizarDetalleCes(pago.id, detail)}
+                  onEditarPersona={() => setPersonaEditando(persona)}
                   onPersona={() => {
                     setPersonaActiva(persona.id);
                     setTab("personas");
@@ -314,6 +514,31 @@ function App() {
           </div>
         </section>
       )}
+
+      {tab === "config" && (
+        <ConfigPanel
+          state={state}
+          periodo={periodo}
+          onCentro={updateCentro}
+          onPeriodo={updatePeriodo}
+          onPersona={updateEmprendedor}
+          onCes={updateConfiguracionCes}
+          onRecalcularCes={recalcularPagosCes}
+        />
+      )}
+
+      {personaEditando && (
+        <PersonaEditModal
+          persona={personaEditando}
+          personas={state.emprendedores}
+          cesRules={state.configuracion.ces.montosPorCredito}
+          onClose={() => setPersonaEditando(null)}
+          onSave={(patch) => {
+            updateEmprendedor(personaEditando.id, patch);
+            setPersonaEditando(null);
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -337,6 +562,7 @@ function CobroCard({
   onEstado,
   onMonto,
   onDetalle,
+  onEditarPersona,
   onPersona,
 }: {
   cobro: CobroSemanal;
@@ -345,6 +571,7 @@ function CobroCard({
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
   onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string }) => void;
+  onEditarPersona: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
@@ -356,7 +583,12 @@ function CobroCard({
           <strong>{persona.nombre}</strong>
           <span>{persona.rut}</span>
         </button>
-        <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
+        <div className="card-header-actions">
+          <button className="icon-button" onClick={onEditarPersona} aria-label={`Editar ${persona.nombre}`}>
+            <Pencil size={17} />
+          </button>
+          <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
+        </div>
       </header>
 
       <div className="money-grid">
@@ -490,11 +722,431 @@ function PersonaPanel({ persona, state }: { persona?: Emprendedor; state: Tesore
         ))}
       </div>
 
+      {state.pagosCes.some((pago) => pago.emprendedorId === persona.id) && (
+        <div className="history-list ces-history">
+          {state.pagosCes
+            .filter((pago) => pago.emprendedorId === persona.id)
+            .map((pago) => (
+              <div key={pago.id} className="history-row">
+                <div>
+                  <strong>Pago CES</strong>
+                  <span><Landmark size={15} /> Vence {formatDate(pago.fechaVencimiento)}</span>
+                </div>
+                <div>
+                  <span className={`badge ${pago.estadoPago}`}>{estadoLabels[pago.estadoPago]}</span>
+                  <strong>{formatCurrency(pago.montoPagado)} / {formatCurrency(pago.totalEsperado)}</strong>
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+
       <div className="source-box">
         <FileImage size={18} />
         <span>Primera carga basada en la captura de la cuota 10. Las siguientes hojas se pueden sumar en la misma estructura.</span>
       </div>
     </article>
+  );
+}
+
+function CesCard({
+  pago,
+  persona,
+  onPagar,
+  onEstado,
+  onMonto,
+  onDetalle,
+  onEditarPersona,
+  onPersona,
+}: {
+  pago: PagoCes;
+  persona: Emprendedor;
+  onPagar: () => void;
+  onEstado: (estado: EstadoPago) => void;
+  onMonto: (monto: number) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string }) => void;
+  onEditarPersona: () => void;
+  onPersona: () => void;
+}) {
+  const saldo = Math.max(pago.totalEsperado - pago.montoPagado, 0);
+
+  return (
+    <article className={`payment-card ces-card ${pago.estadoPago}`}>
+      <header>
+        <button className="person-link" onClick={onPersona}>
+          <strong>{persona.nombre}</strong>
+          <span>{persona.rut}</span>
+        </button>
+        <div className="card-header-actions">
+          <button className="icon-button" onClick={onEditarPersona} aria-label={`Editar ${persona.nombre}`}>
+            <Pencil size={17} />
+          </button>
+          <span className={`badge ${pago.estadoPago}`}>{estadoLabels[pago.estadoPago]}</span>
+        </div>
+      </header>
+
+      <div className="money-grid">
+        <div>
+          <span>Credito base</span>
+          <strong>{formatCurrency(pago.creditoBase)}</strong>
+        </div>
+        <div>
+          <span>Pago CES</span>
+          <strong>{formatCurrency(pago.totalEsperado)}</strong>
+        </div>
+        <div>
+          <span>Vencimiento</span>
+          <strong>{formatDate(pago.fechaVencimiento)}</strong>
+        </div>
+      </div>
+
+      <label className="amount-input">
+        <span>Monto recibido CES</span>
+        <input
+          type="number"
+          inputMode="numeric"
+          min="0"
+          value={pago.montoPagado || ""}
+          onChange={(event) => onMonto(Number(event.target.value || 0))}
+          placeholder="0"
+        />
+      </label>
+
+      <div className="card-actions">
+        <button className="pay-button" onClick={onPagar}>
+          <Check size={18} /> Pagado
+        </button>
+        <button onClick={() => onEstado("parcial")}>Parcial</button>
+        <button onClick={() => onEstado("pendiente")}>Pendiente</button>
+        <button onClick={() => onEstado("atrasado")}>
+          <AlertTriangle size={17} /> Atraso
+        </button>
+      </div>
+
+      <div className="detail-grid">
+        <label>
+          <span>Fecha</span>
+          <input type="date" value={pago.fechaPago} onChange={(event) => onDetalle({ fechaPago: event.target.value })} />
+        </label>
+        <label>
+          <span>Pago</span>
+          <select value={pago.metodoPago} onChange={(event) => onDetalle({ metodoPago: event.target.value as MetodoPago })}>
+            {metodoOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label className="note-input">
+        <span>Observacion</span>
+        <textarea value={pago.observacion} onChange={(event) => onDetalle({ observacion: event.target.value })} rows={2} />
+      </label>
+
+      <footer>
+        <span>Saldo CES: {formatCurrency(saldo)}</span>
+      </footer>
+    </article>
+  );
+}
+
+function ConfigPanel({
+  state,
+  periodo,
+  onCentro,
+  onPeriodo,
+  onPersona,
+  onCes,
+  onRecalcularCes,
+}: {
+  state: TesoreriaState;
+  periodo?: Periodo;
+  onCentro: (patch: Partial<Centro>) => void;
+  onPeriodo: (id: string, patch: Partial<Periodo>) => void;
+  onPersona: (id: string, patch: Partial<Emprendedor>) => void;
+  onCes: (patch: Partial<ConfiguracionCes>) => void;
+  onRecalcularCes: () => void;
+}) {
+  const cesRules = state.configuracion.ces.montosPorCredito;
+
+  return (
+    <section className="workspace config-panel">
+      <section className="config-section">
+        <header>
+          <div>
+            <p className="eyebrow">Configuracion</p>
+            <h2>Datos del centro</h2>
+          </div>
+        </header>
+        <div className="settings-grid">
+          <ConfigInput label="ID centro" value={state.centro.idCentro} onChange={(value) => onCentro({ idCentro: value })} />
+          <ConfigInput label="Nombre centro" value={state.centro.nombreCentro} onChange={(value) => onCentro({ nombreCentro: value })} />
+          <ConfigInput label="Zona" value={state.centro.zona} onChange={(value) => onCentro({ zona: value })} />
+          <ConfigInput label="Asesor" value={state.centro.asesor} onChange={(value) => onCentro({ asesor: value })} />
+        </div>
+      </section>
+
+      <section className="config-section">
+        <header>
+          <div>
+            <p className="eyebrow">CES</p>
+            <h2>Reglas de cobro</h2>
+          </div>
+          <button className="primary-button" onClick={onRecalcularCes}>
+            <RotateCcw size={18} /> Recalcular CES
+          </button>
+        </header>
+        <div className="settings-grid">
+          <ConfigInput
+            label="Vencimiento CES"
+            type="date"
+            value={state.configuracion.ces.fechaVencimiento}
+            onChange={(value) => onCes({ fechaVencimiento: value })}
+          />
+          {Object.entries(cesRules).map(([credito, monto]) => (
+            <ConfigInput
+              key={credito}
+              label={`CES credito ${formatCurrency(Number(credito))}`}
+              type="number"
+              value={String(monto)}
+              onChange={(value) =>
+                onCes({
+                  montosPorCredito: {
+                    [credito]: Number(value || 0),
+                  },
+                })
+              }
+            />
+          ))}
+        </div>
+        <p className="config-note">Al cambiar montos o creditos, usa recalcular para actualizar los totales CES manteniendo los pagos ya registrados.</p>
+      </section>
+
+      {periodo && (
+        <section className="config-section">
+          <header>
+            <div>
+              <p className="eyebrow">Periodo seleccionado</p>
+              <h2>Cuota {periodo.numeroCuota}</h2>
+            </div>
+          </header>
+          <div className="settings-grid">
+            <ConfigInput label="Numero hoja" type="number" value={String(periodo.numeroHoja)} onChange={(value) => onPeriodo(periodo.id, { numeroHoja: Number(value || 0) })} />
+            <ConfigInput label="Numero lote" value={periodo.numeroLote} onChange={(value) => onPeriodo(periodo.id, { numeroLote: value })} />
+            <ConfigInput label="Ciclo" type="number" value={String(periodo.ciclo)} onChange={(value) => onPeriodo(periodo.id, { ciclo: Number(value || 0) })} />
+            <ConfigInput label="Numero cuota" type="number" value={String(periodo.numeroCuota)} onChange={(value) => onPeriodo(periodo.id, { numeroCuota: Number(value || 0) })} />
+            <ConfigInput label="Fecha firma" type="date" value={periodo.fechaFirma} onChange={(value) => onPeriodo(periodo.id, { fechaFirma: value })} />
+            <ConfigInput label="Vencimiento cuota" type="date" value={periodo.fechaVencimiento} onChange={(value) => onPeriodo(periodo.id, { fechaVencimiento: value })} />
+            <ConfigInput label="Cantidad emprendedores" type="number" value={String(periodo.cantidadEmprendedores)} onChange={(value) => onPeriodo(periodo.id, { cantidadEmprendedores: Number(value || 0) })} />
+            <ConfigInput label="Total credito" type="number" value={String(periodo.totalCredito)} onChange={(value) => onPeriodo(periodo.id, { totalCredito: Number(value || 0) })} />
+            <ConfigInput label="Total cuotas" type="number" value={String(periodo.totalCuotas)} onChange={(value) => onPeriodo(periodo.id, { totalCuotas: Number(value || 0) })} />
+            <ConfigInput label="Total seguro" type="number" value={String(periodo.totalSeguro)} onChange={(value) => onPeriodo(periodo.id, { totalSeguro: Number(value || 0) })} />
+            <ConfigInput label="Total centro" type="number" value={String(periodo.totalCentro)} onChange={(value) => onPeriodo(periodo.id, { totalCentro: Number(value || 0) })} />
+            <label className="config-field">
+              <span>Estado carga</span>
+              <select value={periodo.estadoCarga} onChange={(event) => onPeriodo(periodo.id, { estadoCarga: event.target.value as Periodo["estadoCarga"] })}>
+                <option value="completo">Completo</option>
+                <option value="revisar">Revisar</option>
+                <option value="pendiente">Pendiente</option>
+              </select>
+            </label>
+            <ConfigInput label="Imagen origen" value={periodo.imagenOrigen} onChange={(value) => onPeriodo(periodo.id, { imagenOrigen: value })} />
+          </div>
+        </section>
+      )}
+
+      <section className="config-section">
+        <header>
+          <div>
+            <p className="eyebrow">Personas</p>
+            <h2>Datos base y creditos</h2>
+          </div>
+        </header>
+        <div className="people-config-list">
+          {state.emprendedores.map((persona) => (
+            <article className="person-config-card" key={persona.id}>
+              <ConfigInput label="Nombre" value={persona.nombre} onChange={(value) => onPersona(persona.id, { nombre: value })} />
+              <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
+              <ConfigInput label="Credito original" type="number" value={String(persona.creditoOriginal)} onChange={(value) => onPersona(persona.id, { creditoOriginal: Number(value || 0) })} />
+              <ConfigInput label="Anillo" type="number" value={String(persona.anillo)} onChange={(value) => onPersona(persona.id, { anillo: Number(value || 0) })} />
+              <ConfigInput label="Notas" value={persona.notas ?? ""} onChange={(value) => onPersona(persona.id, { notas: value })} />
+            </article>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function PersonaEditModal({
+  persona,
+  personas,
+  cesRules,
+  onClose,
+  onSave,
+}: {
+  persona: Emprendedor;
+  personas: Emprendedor[];
+  cesRules: Record<string, number>;
+  onClose: () => void;
+  onSave: (patch: PersonaForm) => void;
+}) {
+  const [form, setForm] = useState<PersonaForm>({
+    nombre: persona.nombre,
+    rut: persona.rut,
+    creditoOriginal: persona.creditoOriginal,
+    anillo: persona.anillo,
+    notas: persona.notas ?? "",
+  });
+  const [touched, setTouched] = useState(false);
+  const errors = validatePersonaForm(form, personas, persona.id);
+  const hasErrors = Object.keys(errors).length > 0;
+  const cesMonto = cesRules[String(form.creditoOriginal)] ?? 0;
+
+  const updateForm = <K extends keyof PersonaForm>(key: K, value: PersonaForm[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleSave = () => {
+    setTouched(true);
+    if (hasErrors) return;
+
+    onSave({
+      ...form,
+      nombre: form.nombre.trim(),
+      rut: formatRut(form.rut),
+      notas: form.notas?.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-person-title">
+        <header>
+          <div>
+            <p className="eyebrow">Editar persona</p>
+            <h2 id="edit-person-title">{persona.nombre}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar editor">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="modal-grid">
+          <ModalField label="Nombre" error={touched ? errors.nombre : undefined}>
+            <input
+              value={form.nombre}
+              onChange={(event) => updateForm("nombre", event.target.value)}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="RUT" error={touched ? errors.rut : undefined} hint="Formato aceptado: 12.345.678-9 o 12345678-9">
+            <input
+              value={form.rut}
+              onChange={(event) => updateForm("rut", event.target.value.toUpperCase())}
+              onBlur={() => {
+                updateForm("rut", formatRut(form.rut));
+                setTouched(true);
+              }}
+              inputMode="text"
+            />
+          </ModalField>
+
+          <ModalField label="Credito original" error={touched ? errors.creditoOriginal : undefined}>
+            <input
+              type="number"
+              min="1"
+              inputMode="numeric"
+              value={form.creditoOriginal || ""}
+              onChange={(event) => updateForm("creditoOriginal", Number(event.target.value || 0))}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="Anillo" error={touched ? errors.anillo : undefined}>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={form.anillo}
+              onChange={(event) => updateForm("anillo", Number(event.target.value || 0))}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="Notas" error={touched ? errors.notas : undefined}>
+            <textarea
+              value={form.notas ?? ""}
+              onChange={(event) => updateForm("notas", event.target.value)}
+              onBlur={() => setTouched(true)}
+              rows={3}
+            />
+          </ModalField>
+        </div>
+
+        <div className={cesMonto > 0 ? "modal-info" : "modal-info warning"}>
+          <Landmark size={18} />
+          <span>
+            CES segun credito: {cesMonto > 0 ? formatCurrency(cesMonto) : "sin regla configurada para este credito"}
+          </span>
+        </div>
+
+        {touched && hasErrors && (
+          <div className="modal-error" role="alert">
+            Revisa los campos marcados antes de guardar.
+          </div>
+        )}
+
+        <footer>
+          <button className="secondary-button" onClick={onClose}>Cancelar</button>
+          <button className="primary-button" onClick={handleSave}>
+            <Check size={18} /> Guardar
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ModalField({
+  label,
+  error,
+  hint,
+  children,
+}: {
+  label: string;
+  error?: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={error ? "modal-field invalid" : "modal-field"}>
+      <span>{label}</span>
+      {children}
+      {hint && !error && <small>{hint}</small>}
+      {error && <small>{error}</small>}
+    </label>
+  );
+}
+
+function ConfigInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: "text" | "number" | "date";
+}) {
+  return (
+    <label className="config-field">
+      <span>{label}</span>
+      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
   );
 }
 

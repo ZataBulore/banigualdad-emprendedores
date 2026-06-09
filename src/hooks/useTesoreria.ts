@@ -1,15 +1,57 @@
 import { useEffect, useMemo, useState } from "react";
-import { tesoreriaInicial } from "../data/tesoreriaInicial";
-import type { CobroSemanal, EstadoPago, MetodoPago, TesoreriaState } from "../types/tesoreria";
+import { configuracionInicial, crearPagosCes, getMontoCes, tesoreriaInicial } from "../data/tesoreriaInicial";
+import type {
+  Centro,
+  CobroSemanal,
+  ConfiguracionCes,
+  Emprendedor,
+  EstadoPago,
+  MetodoPago,
+  PagoCes,
+  Periodo,
+  TesoreriaState,
+} from "../types/tesoreria";
 
 const STORAGE_KEY = "tesoreria-semilla-emprende-v1";
+
+const deriveEstadoPago = (montoPagado: number, totalEsperado: number, current: EstadoPago) => {
+  if (current === "atrasado" || current === "revisar") return current;
+  if (montoPagado <= 0) return "pendiente";
+  return montoPagado >= totalEsperado ? "pagado" : "parcial";
+};
+
+const migrateState = (state: TesoreriaState): TesoreriaState => {
+  const configuracion = {
+    ...configuracionInicial,
+    ...(state.configuracion ?? {}),
+    ces: {
+      ...configuracionInicial.ces,
+      ...(state.configuracion?.ces ?? {}),
+      montosPorCredito: {
+        ...configuracionInicial.ces.montosPorCredito,
+        ...(state.configuracion?.ces?.montosPorCredito ?? {}),
+      },
+    },
+  };
+
+  return {
+    ...state,
+    configuracion,
+    pagosCes: state.pagosCes?.length
+      ? state.pagosCes.map((pago) => ({
+          ...pago,
+          fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
+        }))
+      : crearPagosCes(state.emprendedores, configuracion),
+  };
+};
 
 const loadState = (): TesoreriaState => {
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (!stored) return tesoreriaInicial;
 
   try {
-    return JSON.parse(stored) as TesoreriaState;
+    return migrateState(JSON.parse(stored) as TesoreriaState);
   } catch {
     return tesoreriaInicial;
   }
@@ -35,12 +77,119 @@ export const useTesoreria = () => {
     }));
   };
 
+  const updateCes = (id: string, patch: Partial<PagoCes>) => {
+    setState((current) => ({
+      ...current,
+      pagosCes: current.pagosCes.map((pago) => (pago.id === id ? { ...pago, ...patch } : pago)),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const updateCentro = (patch: Partial<Centro>) => {
+    setState((current) => ({
+      ...current,
+      centro: { ...current.centro, ...patch },
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const updatePeriodo = (id: string, patch: Partial<Periodo>) => {
+    setState((current) => ({
+      ...current,
+      periodos: current.periodos.map((periodo) =>
+        periodo.id === id ? { ...periodo, ...patch } : periodo,
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const updateEmprendedor = (id: string, patch: Partial<Emprendedor>) => {
+    setState((current) => ({
+      ...current,
+      emprendedores: current.emprendedores.map((emprendedor) =>
+        emprendedor.id === id ? { ...emprendedor, ...patch } : emprendedor,
+      ),
+      pagosCes: current.pagosCes.map((pago) => {
+        if (pago.emprendedorId !== id || patch.creditoOriginal === undefined) return pago;
+        const totalEsperado = getMontoCes(patch.creditoOriginal, current.configuracion.ces.montosPorCredito);
+
+        return {
+          ...pago,
+          creditoBase: patch.creditoOriginal,
+          totalEsperado,
+          estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
+          confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const updateConfiguracionCes = (patch: Partial<ConfiguracionCes>) => {
+    setState((current) => {
+      const ces = {
+        ...current.configuracion.ces,
+        ...patch,
+        montosPorCredito: {
+          ...current.configuracion.ces.montosPorCredito,
+          ...(patch.montosPorCredito ?? {}),
+        },
+      };
+
+      return {
+        ...current,
+        configuracion: {
+          ...current.configuracion,
+          ces,
+        },
+        pagosCes: current.pagosCes.map((pago) => ({
+          ...pago,
+          fechaVencimiento: ces.fechaVencimiento,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  };
+
+  const recalcularPagosCes = () => {
+    setState((current) => ({
+      ...current,
+      pagosCes: current.pagosCes.map((pago) => {
+        const emprendedor = current.emprendedores.find((persona) => persona.id === pago.emprendedorId);
+        const creditoBase = emprendedor?.creditoOriginal ?? pago.creditoBase;
+        const totalEsperado = getMontoCes(creditoBase, current.configuracion.ces.montosPorCredito);
+
+        return {
+          ...pago,
+          creditoBase,
+          fechaVencimiento: current.configuracion.ces.fechaVencimiento,
+          totalEsperado,
+          estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
+          confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const marcarPagado = (id: string) => {
     const cobro = state.cobros.find((item) => item.id === id);
     if (!cobro) return;
 
     updateCobro(id, {
       montoPagado: cobro.totalEsperado,
+      estadoPago: "pagado",
+      fechaPago: new Date().toISOString().slice(0, 10),
+      confirmadoPorTesorero: true,
+    });
+  };
+
+  const marcarCesPagado = (id: string) => {
+    const pago = state.pagosCes.find((item) => item.id === id);
+    if (!pago) return;
+
+    updateCes(id, {
+      montoPagado: pago.totalEsperado,
       estadoPago: "pagado",
       fechaPago: new Date().toISOString().slice(0, 10),
       confirmadoPorTesorero: true,
@@ -67,6 +216,26 @@ export const useTesoreria = () => {
     updateCobro(id, patch);
   };
 
+  const cambiarEstadoCes = (id: string, estadoPago: EstadoPago) => {
+    const pago = state.pagosCes.find((item) => item.id === id);
+    if (!pago) return;
+
+    const patch: Partial<PagoCes> = { estadoPago };
+
+    if (estadoPago === "pendiente" || estadoPago === "atrasado") {
+      patch.montoPagado = 0;
+      patch.confirmadoPorTesorero = false;
+    }
+
+    if (estadoPago === "pagado") {
+      patch.montoPagado = pago.totalEsperado;
+      patch.fechaPago = new Date().toISOString().slice(0, 10);
+      patch.confirmadoPorTesorero = true;
+    }
+
+    updateCes(id, patch);
+  };
+
   const registrarMonto = (id: string, montoPagado: number) => {
     const cobro = state.cobros.find((item) => item.id === id);
     if (!cobro) return;
@@ -82,14 +251,34 @@ export const useTesoreria = () => {
     });
   };
 
+  const registrarMontoCes = (id: string, montoPagado: number) => {
+    const pago = state.pagosCes.find((item) => item.id === id);
+    if (!pago) return;
+
+    const estadoPago =
+      montoPagado <= 0 ? "pendiente" : montoPagado >= pago.totalEsperado ? "pagado" : "parcial";
+
+    updateCes(id, {
+      montoPagado,
+      estadoPago,
+      confirmadoPorTesorero: estadoPago === "pagado",
+      fechaPago: montoPagado > 0 ? pago.fechaPago || new Date().toISOString().slice(0, 10) : "",
+    });
+  };
+
   const actualizarDetalle = (
     id: string,
     detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string },
   ) => updateCobro(id, detail);
 
+  const actualizarDetalleCes = (
+    id: string,
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string },
+  ) => updateCes(id, detail);
+
   const resetear = () => setState(tesoreriaInicial);
 
-  const importar = (nextState: TesoreriaState) => setState(nextState);
+  const importar = (nextState: TesoreriaState) => setState(migrateState(nextState));
 
   const personasPorId = useMemo(
     () => new Map(state.emprendedores.map((emprendedor) => [emprendedor.id, emprendedor])),
@@ -99,10 +288,19 @@ export const useTesoreria = () => {
   return {
     state,
     personasPorId,
+    updateCentro,
+    updatePeriodo,
+    updateEmprendedor,
+    updateConfiguracionCes,
+    recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
+    marcarCesPagado,
+    cambiarEstadoCes,
     registrarMonto,
+    registrarMontoCes,
     actualizarDetalle,
+    actualizarDetalleCes,
     importar,
     resetear,
   };

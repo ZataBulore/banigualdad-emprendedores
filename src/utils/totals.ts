@@ -1,6 +1,12 @@
-import type { CobroSemanal } from "../types/tesoreria";
+import type { EstadoPago } from "../types/tesoreria";
 
-export const getPeriodoTotals = (cobros: CobroSemanal[]) => {
+interface PagoConTotal {
+  totalEsperado: number;
+  montoPagado: number;
+  estadoPago: EstadoPago;
+}
+
+export const getPeriodoTotals = (cobros: PagoConTotal[]) => {
   const esperado = cobros.reduce((acc, cobro) => acc + cobro.totalEsperado, 0);
   const pagado = cobros.reduce((acc, cobro) => acc + cobro.montoPagado, 0);
   const pendientes = cobros.filter((cobro) => cobro.estadoPago === "pendiente").length;

@@ -7,6 +7,7 @@ Crear una aplicacion web mobile responsive para administrar los pagos semanales 
 El sistema debe permitir:
 
 - Registrar cada hoja semanal de cobro.
+- Registrar el pago CES estatico por persona.
 - Ver una tarjeta por cada persona/emprendedor.
 - Controlar montos esperados, pagos recibidos, atrasos y observaciones.
 - Revisar totales por periodo y por persona.
@@ -45,6 +46,7 @@ Stack propuesto:
 - LocalStorage al comienzo para guardar cambios en el navegador.
 - Exportacion/importacion JSON o CSV para respaldo.
 - GitHub Pages para publicacion.
+- Apartado de configuraciones para modificar reglas y datos base sin editar codigo.
 
 Motivo: es liviano, rapido, facil de mantener y no requiere servidor.
 
@@ -129,6 +131,33 @@ Estados sugeridos:
 - condonado
 - revisar
 
+### 5.5 Pago CES por emprendedor
+
+El pago CES es independiente de las cuotas semanales y usa montos estaticos segun el credito original.
+
+La fecha de vencimiento del CES es la misma fecha de firma del documento: 08 de junio de 2026.
+
+Reglas actuales:
+
+- Credito 300.000: CES 58.140.
+- Credito 200.000: CES 38.140.
+- Credito 150.000: CES 8.140.
+- Credito 100.000: CES 8.140.
+
+Campos:
+
+- id
+- emprendedorId
+- creditoBase
+- fechaVencimiento
+- totalEsperado
+- montoPagado
+- estadoPago
+- fechaPago
+- metodoPago
+- observacion
+- confirmadoPorTesorero
+
 ## 6. Pantallas principales
 
 ### 6.1 Inicio / Resumen
@@ -183,10 +212,25 @@ Debe mostrar el historial de una persona:
 - Pagos por periodo.
 - Cuotas pagadas.
 - Cuotas pendientes.
+- Pago CES.
 - Atrasos.
 - Observaciones.
 
-### 6.5 Capturas / respaldo
+### 6.5 Pago CES
+
+Pantalla dedicada a registrar los montos CES por persona.
+
+Debe mostrar:
+
+- Nombre y RUT.
+- Credito base.
+- Monto CES esperado.
+- Monto pagado.
+- Estado.
+- Fecha, metodo y observacion.
+- Resumen total CES esperado, pagado y pendiente.
+
+### 6.6 Capturas / respaldo
 
 Vista opcional para ver la imagen original asociada a cada periodo.
 
@@ -196,13 +240,26 @@ Sirve para:
 - Confirmar fechas.
 - Comparar totales.
 
-### 6.6 Exportar / respaldar
+### 6.7 Exportar / respaldar
 
 Debe permitir:
 
 - Descargar respaldo JSON.
 - Importar respaldo JSON.
 - Exportar CSV para Excel/Google Sheets.
+
+### 6.8 Configuraciones
+
+Pantalla para modificar parametros del sistema sin tocar codigo.
+
+Debe permitir editar:
+
+- Datos del centro: ID, nombre, zona y asesor.
+- Reglas CES: fecha de vencimiento y monto por credito.
+- Periodo seleccionado: hoja, lote, ciclo, cuota, fechas, totales y estado de carga.
+- Personas: nombre, RUT, credito original, anillo y notas.
+
+Cuando cambien las reglas CES o el credito original de una persona, el sistema debe permitir recalcular los montos CES manteniendo los pagos ya registrados.
 
 ## 7. Flujo de trabajo del tesorero
 
@@ -266,6 +323,15 @@ Resultado esperado: navegacion comoda desde celular para ver cada cuota y cada p
 
 Resultado esperado: el tesorero puede trabajar directamente desde la app.
 
+### Etapa 4.5: Registro de pago CES
+
+- Crear vista CES separada de cuotas semanales.
+- Calcular monto CES desde el credito original.
+- Registrar pago total, parcial, pendiente o atrasado.
+- Incluir CES en la ficha de cada persona.
+
+Resultado esperado: el pago CES se gestiona sin mezclarlo con las cuotas por periodo.
+
 ### Etapa 5: Historial por persona
 
 - Crear ficha de persona.
@@ -283,6 +349,17 @@ Resultado esperado: se puede revisar rapidamente la situacion completa de cada e
 - Agregar boton de respaldo visible.
 
 Resultado esperado: los datos no quedan atrapados en un solo navegador.
+
+### Etapa 6.5: Configuracion editable
+
+- Crear apartado Config.
+- Parametrizar datos del centro.
+- Parametrizar reglas CES.
+- Parametrizar datos del periodo.
+- Parametrizar datos de personas.
+- Permitir recalculo CES.
+
+Resultado esperado: el tesorero puede ajustar datos base o reglas del negocio desde la app.
 
 ### Etapa 7: Pulido y validacion
 

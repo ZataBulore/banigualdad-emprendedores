@@ -9,6 +9,15 @@ export interface Centro {
   asesor: string;
 }
 
+export interface ConfiguracionCes {
+  fechaVencimiento: string;
+  montosPorCredito: Record<string, number>;
+}
+
+export interface ConfiguracionSistema {
+  ces: ConfiguracionCes;
+}
+
 export interface Emprendedor {
   id: string;
   nombre: string;
@@ -34,6 +43,20 @@ export interface CobroSemanal {
   confirmadoPorTesorero: boolean;
 }
 
+export interface PagoCes {
+  id: string;
+  emprendedorId: string;
+  creditoBase: number;
+  fechaVencimiento: string;
+  totalEsperado: number;
+  montoPagado: number;
+  estadoPago: EstadoPago;
+  fechaPago: string;
+  metodoPago: MetodoPago;
+  observacion: string;
+  confirmadoPorTesorero: boolean;
+}
+
 export interface Periodo {
   id: string;
   numeroHoja: number;
@@ -53,8 +76,10 @@ export interface Periodo {
 
 export interface TesoreriaState {
   centro: Centro;
+  configuracion: ConfiguracionSistema;
   periodos: Periodo[];
   emprendedores: Emprendedor[];
   cobros: CobroSemanal[];
+  pagosCes: PagoCes[];
   updatedAt: string;
 }

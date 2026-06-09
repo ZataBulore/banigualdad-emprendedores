@@ -1,4 +1,41 @@
-import type { TesoreriaState } from "../types/tesoreria";
+import type { ConfiguracionSistema, Emprendedor, TesoreriaState } from "../types/tesoreria";
+
+export const FECHA_VENCIMIENTO_CES = "2026-06-08";
+
+export const configuracionInicial: ConfiguracionSistema = {
+  ces: {
+    fechaVencimiento: FECHA_VENCIMIENTO_CES,
+    montosPorCredito: {
+      "300000": 58140,
+      "200000": 38140,
+      "150000": 8140,
+      "100000": 8140,
+    },
+  },
+};
+
+export const getMontoCes = (
+  creditoOriginal: number,
+  montosPorCredito = configuracionInicial.ces.montosPorCredito,
+) => montosPorCredito[String(creditoOriginal)] ?? 0;
+
+export const crearPagosCes = (
+  emprendedores: Emprendedor[],
+  configuracion = configuracionInicial,
+) =>
+  emprendedores.map((emprendedor) => ({
+    id: `ces-${emprendedor.id}`,
+    emprendedorId: emprendedor.id,
+    creditoBase: emprendedor.creditoOriginal,
+    fechaVencimiento: configuracion.ces.fechaVencimiento,
+    totalEsperado: getMontoCes(emprendedor.creditoOriginal, configuracion.ces.montosPorCredito),
+    montoPagado: 0,
+    estadoPago: "pendiente" as const,
+    fechaPago: "",
+    metodoPago: "" as const,
+    observacion: "",
+    confirmadoPorTesorero: false,
+  }));
 
 export const tesoreriaInicial: TesoreriaState = {
   centro: {
@@ -7,6 +44,7 @@ export const tesoreriaInicial: TesoreriaState = {
     zona: "Los_Angeles",
     asesor: "Munoz Navarrete, Millaray Javiera",
   },
+  configuracion: configuracionInicial,
   periodos: [
     {
       id: "cuota-10-2026-08-17",
@@ -77,5 +115,24 @@ export const tesoreriaInicial: TesoreriaState = {
     observacion: "",
     confirmadoPorTesorero: false,
   })),
+  pagosCes: crearPagosCes([
+    { id: "9509193-8", nombre: "Quintana Martines, Audolia", rut: "9.509.193-8", anillo: 0, creditoOriginal: 150000 },
+    { id: "17179221-5", nombre: "Vergara Vasquez, Braulio", rut: "17.179.221-5", anillo: 0, creditoOriginal: 300000 },
+    { id: "14070842-9", nombre: "Contreras Morales, Estela Del", rut: "14.070.842-9", anillo: 0, creditoOriginal: 150000 },
+    { id: "15213637-4", nombre: "Higueras Garces, Gonzalo", rut: "15.213.637-4", anillo: 0, creditoOriginal: 150000 },
+    { id: "18596164-8", nombre: "Betanzo, Jorge", rut: "18.596.164-8", anillo: 0, creditoOriginal: 300000 },
+    { id: "18815876-5", nombre: "Caro Hurtado, Karin Camila", rut: "18.815.876-5", anillo: 0, creditoOriginal: 150000 },
+    { id: "17551040-0", nombre: "Rivas Rivas, Leticia Del Pilar", rut: "17.551.040-0", anillo: 0, creditoOriginal: 150000 },
+    { id: "22622097-6", nombre: "Higueras Montanares", rut: "22.622.097-6", anillo: 0, creditoOriginal: 100000 },
+    { id: "16822905-4", nombre: "Astudillo Sandoval, Maria", rut: "16.822.905-4", anillo: 0, creditoOriginal: 100000 },
+    { id: "22252218-8", nombre: "Vidal Becerra, Meylin Milady", rut: "22.252.218-8", anillo: 0, creditoOriginal: 100000 },
+    { id: "17203029-7", nombre: "Zapata Tapia, Monica Valeria", rut: "17.203.029-7", anillo: 0, creditoOriginal: 300000 },
+    { id: "20891688-2", nombre: "Sepulveda Saavedra, Nicole", rut: "20.891.688-2", anillo: 0, creditoOriginal: 150000 },
+    { id: "18456394-0", nombre: "Santander Mancilla, Pricilla", rut: "18.456.394-0", anillo: 0, creditoOriginal: 100000 },
+    { id: "18866885-2", nombre: "Rivas Fuentes, Rosalia Eugenia", rut: "18.866.885-2", anillo: 0, creditoOriginal: 150000 },
+    { id: "18536284-1", nombre: "Cid Toloza, Rosio Soledad", rut: "18.536.284-1", anillo: 0, creditoOriginal: 200000 },
+    { id: "16296799-1", nombre: "Bulboa Orellana, Sergio", rut: "16.296.799-1", anillo: 0, creditoOriginal: 200000 },
+    { id: "12734209-1", nombre: "Rebolledo Rosales, Silvia Ester", rut: "12.734.209-1", anillo: 0, creditoOriginal: 150000 },
+  ], configuracionInicial),
   updatedAt: new Date().toISOString(),
 };
