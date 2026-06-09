@@ -37,7 +37,7 @@ type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
-type AuthUser = { email: string; nombre: string; foto?: string };
+type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
 
 declare global {
@@ -58,7 +58,8 @@ const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "
   .split(/[,\n;]/)
   .map((email: string) => email.trim().toLowerCase())
   .filter(Boolean);
-const AUTH_SESSION_KEY = "semilla-emprende-google-user";
+const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
+const AUTH_SESSION_VERSION = 2;
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -178,7 +179,12 @@ const decodeGoogleCredential = (credential: string): AuthUser => {
 const loadAuthSession = () => {
   try {
     const stored = window.sessionStorage.getItem(AUTH_SESSION_KEY);
-    return stored ? JSON.parse(stored) as AuthUser : null;
+    if (!stored) return null;
+    const user = JSON.parse(stored) as AuthUser;
+    if (user.authSource !== "google" || user.sessionVersion !== AUTH_SESSION_VERSION || !user.email) {
+      return null;
+    }
+    return user;
   } catch {
     return null;
   }
@@ -388,8 +394,9 @@ function App() {
       return;
     }
 
-    window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
-    setAuthUser(user);
+    const sessionUser: AuthUser = { ...user, authSource: "google", sessionVersion: AUTH_SESSION_VERSION };
+    window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser));
+    setAuthUser(sessionUser);
     setAuthError("");
   };
 

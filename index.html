@@ -15,14 +15,16 @@
             return;
           }
 
+          var assetVersion = "2026-06-09-auth-cache-v2";
+
           var stylesheet = document.createElement("link");
           stylesheet.rel = "stylesheet";
-          stylesheet.href = "./assets/index.css";
+          stylesheet.href = "./assets/index.css?v=" + assetVersion;
           document.head.appendChild(stylesheet);
 
           var app = document.createElement("script");
           app.type = "module";
-          app.src = "./assets/app.js";
+          app.src = "./assets/app.js?v=" + assetVersion;
           document.body.appendChild(app);
         }, 0);
       }

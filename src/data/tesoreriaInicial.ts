@@ -13,7 +13,10 @@ export const configuracionInicial: ConfiguracionSistema = {
     },
   },
   seguridad: {
-    correosAutorizados: [],
+    correosAutorizados: [
+      "serbulboa@gmail.com",
+      "noneknowmyname@gmail.com",
+    ],
   },
 };
 
