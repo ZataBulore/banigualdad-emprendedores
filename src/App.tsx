@@ -369,7 +369,7 @@ function App() {
   };
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell section-${tab}`}>
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">Fundacion Banigualdad</p>
@@ -445,6 +445,8 @@ function App() {
           <SlidersHorizontal size={18} /> Config
         </button>
       </nav>
+
+      <SectionBanner tab={tab} periodo={periodo} totals={totals} cesTotals={cesTotals} />
 
       {tab === "cobros" && (
         <section className="workspace">
@@ -676,6 +678,56 @@ function SummaryCard({ icon, label, value, tone = "default" }: { icon: React.Rea
         <strong>{value}</strong>
       </div>
     </article>
+  );
+}
+
+function SectionBanner({
+  tab,
+  periodo,
+  totals,
+  cesTotals,
+}: {
+  tab: Tab;
+  periodo?: Periodo;
+  totals: ReturnType<typeof getPeriodoTotals>;
+  cesTotals: ReturnType<typeof getPeriodoTotals>;
+}) {
+  const meta: Record<Tab, { title: string; detail: string; icon: React.ReactNode }> = {
+    cobros: {
+      title: "Cobros semanales",
+      detail: periodo ? `Cuota ${periodo.numeroCuota} · vence ${formatDate(periodo.fechaVencimiento)} · pendiente ${formatCurrency(totals.saldo)}` : "Periodo semanal",
+      icon: <WalletCards size={20} />,
+    },
+    ces: {
+      title: "Pago CES",
+      detail: `Monto estatico · pendiente ${formatCurrency(cesTotals.saldo)}`,
+      icon: <Landmark size={20} />,
+    },
+    personas: {
+      title: "Personas del grupo",
+      detail: "Ficha, historial y contacto por WhatsApp",
+      icon: <History size={20} />,
+    },
+    respaldo: {
+      title: "Respaldo",
+      detail: "Exportar, importar y proteger registros",
+      icon: <Download size={20} />,
+    },
+    config: {
+      title: "Configuracion",
+      detail: "Datos base, reglas CES y periodos",
+      icon: <SlidersHorizontal size={20} />,
+    },
+  };
+
+  return (
+    <section className={`section-banner ${tab}`}>
+      <span className="section-banner-icon">{meta[tab].icon}</span>
+      <div>
+        <p>{meta[tab].title}</p>
+        <strong>{meta[tab].detail}</strong>
+      </div>
+    </section>
   );
 }
 
