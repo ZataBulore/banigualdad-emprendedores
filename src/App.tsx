@@ -1112,24 +1112,10 @@ function LoginGate({
             <strong>Semilla Emprende</strong>
           </div>
         </div>
-        <div className="login-negrete-scene" aria-hidden="true">
-          <div>
-            <span>Feria local</span>
-            <strong>Emprendedores</strong>
-          </div>
-          <div>
-            <span>Negrete</span>
-            <strong>Capital y reuniones</strong>
-          </div>
-          <div>
-            <span>Banigualdad</span>
-            <strong>Grupo activo</strong>
-          </div>
-        </div>
         <p className="eyebrow">Acceso privado</p>
-        <h1>Sistema del grupo</h1>
+        <h1>Acceso del grupo</h1>
         <p className="login-copy">
-          Ingresa con una cuenta de Google autorizada para ver cobros, personas, CES y reuniones del grupo.
+          Gestiona cobros, asistencia y acuerdos del centro con una cuenta Google autorizada.
         </p>
 
         {!clientId ? (
