@@ -16,6 +16,7 @@ export const configuracionInicial: ConfiguracionSistema = {
     correosAutorizados: [
       "serbulboa@gmail.com",
       "noneknowmyname@gmail.com",
+      "jbetanzo74@gmail.com",
     ],
   },
 };
