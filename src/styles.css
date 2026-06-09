@@ -192,18 +192,18 @@ button {
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  background: var(--surface);
-  padding: 6px 7px 6px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 4px 5px 4px 6px;
   box-shadow: var(--shadow);
 }
 
 .auth-avatar {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
@@ -222,12 +222,10 @@ button {
 .auth-user {
   display: grid;
   min-width: 0;
-  gap: 1px;
   text-align: right;
 }
 
-.auth-user strong,
-.auth-user small {
+.auth-user strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -235,24 +233,18 @@ button {
 
 .auth-user strong {
   color: var(--text);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 850;
-}
-
-.auth-user small {
-  color: var(--muted);
-  font-size: 0.68rem;
-  font-weight: 700;
 }
 
 .auth-session button {
   display: inline-grid;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   flex: 0 0 auto;
   place-items: center;
   border: 0;
-  border-radius: 10px;
+  border-radius: 999px;
   background: #f2f2f7;
   color: var(--muted);
   padding: 0;
@@ -278,6 +270,11 @@ button {
   font-size: 0.7rem;
   font-weight: 850;
   white-space: nowrap;
+}
+
+.cloud-config-section > svg,
+.cloud-config-section header > svg {
+  color: var(--section-accent);
 }
 
 .cloud-status.synced {
@@ -2144,8 +2141,15 @@ button {
     min-height: 36px;
   }
 
+  .hero-actions {
+    display: grid;
+    gap: 8px;
+    justify-items: end;
+  }
+
   .auth-session {
-    width: 100%;
+    width: auto;
+    max-width: min(100%, 220px);
   }
 
   .cloud-status {
@@ -2153,8 +2157,11 @@ button {
   }
 
   .auth-user {
-    flex: 1;
-    text-align: left;
+    text-align: right;
+  }
+
+  .hero-actions select {
+    justify-self: stretch;
   }
 
   .period-strip {

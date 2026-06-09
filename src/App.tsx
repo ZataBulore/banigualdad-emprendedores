@@ -697,17 +697,12 @@ function App() {
           <p>{state.centro.nombreCentro} · {state.centro.zona}</p>
         </div>
         <div className="hero-actions">
-          <div className={`cloud-status ${cloudStatus}`} title={cloudError || cloudStatusLabels[cloudStatus]}>
-            {cloudStatus === "local" || cloudStatus === "error" ? <CloudOff size={15} /> : <Cloud size={15} />}
-            <span>{cloudStatusLabels[cloudStatus]}</span>
-          </div>
           <div className="auth-session">
             <span className="auth-avatar">
               {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
             </span>
             <span className="auth-user">
               <strong>{authUser.nombre || "Cuenta Google"}</strong>
-              <small>{authUser.email}</small>
             </span>
             <button type="button" onClick={handleLogout} aria-label="Cerrar sesion">
               <LogOut size={16} />
@@ -1005,6 +1000,8 @@ function App() {
           fileInputRef={fileInputRef}
           onImport={handleImport}
           onReset={handleReset}
+          cloudStatus={cloudStatus}
+          cloudError={cloudError}
         />
       )}
 
@@ -1898,6 +1895,8 @@ function ConfigPanel({
   fileInputRef,
   onImport,
   onReset,
+  cloudStatus,
+  cloudError,
 }: {
   state: TesoreriaState;
   periodo?: Periodo;
@@ -1915,6 +1914,8 @@ function ConfigPanel({
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
   onReset: () => void;
+  cloudStatus: keyof typeof cloudStatusLabels;
+  cloudError: string;
 }) {
   const [configTab, setConfigTab] = useState<ConfigTab>("general");
   const [emailsModalOpen, setEmailsModalOpen] = useState(false);
@@ -1934,6 +1935,23 @@ function ConfigPanel({
           <Download size={17} /> Respaldo
         </button>
       </div>
+
+      <section className="config-section cloud-config-section">
+        <header>
+          <div>
+            <p className="eyebrow">Sincronizacion</p>
+            <h2>Estado de la nube</h2>
+          </div>
+          {cloudStatus === "local" || cloudStatus === "error" ? <CloudOff size={22} /> : <Cloud size={22} />}
+        </header>
+        <div className={`cloud-status ${cloudStatus}`}>
+          {cloudStatus === "local" || cloudStatus === "error" ? <CloudOff size={15} /> : <Cloud size={15} />}
+          <span>{cloudStatusLabels[cloudStatus]}</span>
+        </div>
+        <p className="config-note">
+          {cloudError || "Cuando Firebase este configurado, los cambios del sistema se guardaran en la nube automaticamente."}
+        </p>
+      </section>
 
       {configTab === "seguridad" && (
         <section className="config-section security-section">
