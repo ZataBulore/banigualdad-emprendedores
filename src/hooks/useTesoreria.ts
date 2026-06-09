@@ -10,10 +10,12 @@ import type {
   EstadoAsistencia,
   EstadoPago,
   MetodoPago,
+  MovimientoHistorial,
   PagoCes,
   Periodo,
   Reunion,
   TesoreriaState,
+  TipoMovimiento,
 } from "../types/tesoreria";
 
 const STORAGE_KEY = "tesoreria-semilla-emprende-v1";
@@ -25,6 +27,86 @@ const deriveEstadoPago = (montoPagado: number, totalEsperado: number, current: E
   if (montoPagado <= 0) return "pendiente";
   return montoPagado >= totalEsperado ? "pagado" : "parcial";
 };
+
+type AuditInput = {
+  tipo: TipoMovimiento;
+  accion: string;
+  detalle: string;
+  entidadId?: string;
+  personaId?: string;
+  personaNombre?: string;
+};
+
+const fieldLabels: Record<string, string> = {
+  idCentro: "ID centro",
+  nombreCentro: "nombre del centro",
+  zona: "zona",
+  asesor: "asesor",
+  numeroHoja: "numero de hoja",
+  numeroLote: "numero de lote",
+  ciclo: "ciclo",
+  fechaFirma: "fecha de firma",
+  numeroCuota: "numero de cuota",
+  fechaVencimiento: "fecha de vencimiento",
+  cantidadEmprendedores: "cantidad de emprendedores",
+  totalCredito: "total credito",
+  totalCuotas: "total cuotas",
+  totalSeguro: "total seguro",
+  totalCentro: "total centro",
+  imagenOrigen: "imagen origen",
+  estadoCarga: "estado de carga",
+  nombre: "nombre",
+  rut: "RUT",
+  whatsapp: "WhatsApp",
+  estado: "estado",
+  fechaBaja: "fecha de baja",
+  motivoBaja: "motivo de baja",
+  observacionBaja: "observacion de baja",
+  creditoOriginal: "credito original",
+  anillo: "anillo",
+  notas: "notas",
+  cuota: "cuota",
+  seguro: "seguro",
+  totalEsperado: "total esperado",
+  montoPagado: "monto pagado",
+  estadoPago: "estado de pago",
+  fechaAtraso: "fecha de atraso",
+  fechaPago: "fecha de pago",
+  metodoPago: "metodo de pago",
+  referenciaPago: "referencia de pago",
+  observacion: "observacion",
+  confirmadoPorTesorero: "confirmacion tesorero",
+  fecha: "fecha",
+  lugar: "lugar",
+  acta: "acta",
+  titulo: "titulo",
+  correosAutorizados: "correos autorizados",
+  fechaVencimientoCes: "vencimiento CES",
+  montosPorCredito: "montos por credito",
+};
+
+const describePatch = (patch: Record<string, unknown>) => {
+  const fields = Object.keys(patch).filter((key) => patch[key] !== undefined);
+  if (!fields.length) return "Sin campos modificados.";
+  const labels = fields.map((key) => fieldLabels[key] ?? key);
+  return `Campos modificados: ${labels.join(", ")}.`;
+};
+
+const createMovimiento = (input: AuditInput, usuarioEmail?: string): MovimientoHistorial => {
+  const timestamp = new Date().toISOString();
+
+  return {
+    id: `mov-${timestamp}-${Math.random().toString(36).slice(2, 9)}`,
+    fecha: timestamp,
+    usuarioEmail: usuarioEmail || "sin usuario",
+    ...input,
+  };
+};
+
+const withMovimiento = (state: TesoreriaState, input: AuditInput, usuarioEmail?: string): TesoreriaState => ({
+  ...state,
+  historial: [createMovimiento(input, usuarioEmail), ...(state.historial ?? [])],
+});
 
 const crearAsistenciasBase = (emprendedores: Emprendedor[]) =>
   emprendedores.map((emprendedor) => ({
@@ -131,6 +213,7 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
         }))
       : crearPagosCes(state.emprendedores, configuracion),
     reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
+    historial: state.historial ?? [],
   };
 };
 
@@ -246,62 +329,113 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     };
   }, [options.syncEnabled, options.updatedBy, state]);
 
-  const updateCobro = (id: string, patch: Partial<CobroSemanal>) => {
-    setState((current) => ({
-      ...current,
-      cobros: current.cobros.map((cobro) =>
-        cobro.id === id ? { ...cobro, ...patch } : cobro,
-      ),
-      updatedAt: new Date().toISOString(),
-    }));
+  const updateCobro = (id: string, patch: Partial<CobroSemanal>, accion = "Cobro actualizado") => {
+    setState((current) => {
+      const cobroActual = current.cobros.find((cobro) => cobro.id === id);
+      const persona = cobroActual ? current.emprendedores.find((item) => item.id === cobroActual.emprendedorId) : undefined;
+
+      return withMovimiento({
+        ...current,
+        cobros: current.cobros.map((cobro) =>
+          cobro.id === id ? { ...cobro, ...patch } : cobro,
+        ),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "cobro",
+        accion,
+        detalle: describePatch(patch),
+        entidadId: id,
+        personaId: persona?.id ?? cobroActual?.emprendedorId,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
   };
 
-  const updateCes = (id: string, patch: Partial<PagoCes>) => {
-    setState((current) => ({
-      ...current,
-      pagosCes: current.pagosCes.map((pago) => (pago.id === id ? { ...pago, ...patch } : pago)),
-      updatedAt: new Date().toISOString(),
-    }));
+  const updateCes = (id: string, patch: Partial<PagoCes>, accion = "Pago CES actualizado") => {
+    setState((current) => {
+      const pagoActual = current.pagosCes.find((pago) => pago.id === id);
+      const persona = pagoActual ? current.emprendedores.find((item) => item.id === pagoActual.emprendedorId) : undefined;
+
+      return withMovimiento({
+        ...current,
+        pagosCes: current.pagosCes.map((pago) => (pago.id === id ? { ...pago, ...patch } : pago)),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "ces",
+        accion,
+        detalle: describePatch(patch),
+        entidadId: id,
+        personaId: persona?.id ?? pagoActual?.emprendedorId,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
   };
 
   const updateCentro = (patch: Partial<Centro>) => {
-    setState((current) => ({
-      ...current,
-      centro: { ...current.centro, ...patch },
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((current) =>
+      withMovimiento({
+        ...current,
+        centro: { ...current.centro, ...patch },
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "configuracion",
+        accion: "Datos del centro actualizados",
+        detalle: describePatch(patch),
+        entidadId: current.centro.idCentro,
+      }, options.updatedBy),
+    );
   };
 
   const updatePeriodo = (id: string, patch: Partial<Periodo>) => {
-    setState((current) => ({
-      ...current,
-      periodos: current.periodos.map((periodo) =>
-        periodo.id === id ? { ...periodo, ...patch } : periodo,
-      ),
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((current) => {
+      const periodo = current.periodos.find((item) => item.id === id);
+
+      return withMovimiento({
+        ...current,
+        periodos: current.periodos.map((item) =>
+          item.id === id ? { ...item, ...patch } : item,
+        ),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "configuracion",
+        accion: "Semana de cobro actualizada",
+        detalle: `${periodo ? `Cuota ${periodo.numeroCuota}. ` : ""}${describePatch(patch)}`,
+        entidadId: id,
+      }, options.updatedBy);
+    });
   };
 
   const updateEmprendedor = (id: string, patch: Partial<Emprendedor>) => {
-    setState((current) => ({
-      ...current,
-      emprendedores: current.emprendedores.map((emprendedor) =>
-        emprendedor.id === id ? { ...emprendedor, ...patch } : emprendedor,
-      ),
-      pagosCes: current.pagosCes.map((pago) => {
-        if (pago.emprendedorId !== id || patch.creditoOriginal === undefined) return pago;
-        const totalEsperado = getMontoCes(patch.creditoOriginal, current.configuracion.ces.montosPorCredito);
+    setState((current) => {
+      const persona = current.emprendedores.find((emprendedor) => emprendedor.id === id);
 
-        return {
-          ...pago,
-          creditoBase: patch.creditoOriginal,
-          totalEsperado,
-          estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
-          confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
-        };
-      }),
-      updatedAt: new Date().toISOString(),
-    }));
+      return withMovimiento({
+        ...current,
+        emprendedores: current.emprendedores.map((emprendedor) =>
+          emprendedor.id === id ? { ...emprendedor, ...patch } : emprendedor,
+        ),
+        pagosCes: current.pagosCes.map((pago) => {
+          if (pago.emprendedorId !== id || patch.creditoOriginal === undefined) return pago;
+          const totalEsperado = getMontoCes(patch.creditoOriginal, current.configuracion.ces.montosPorCredito);
+
+          return {
+            ...pago,
+            creditoBase: patch.creditoOriginal,
+            totalEsperado,
+            estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
+            confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "persona",
+        accion: "Persona actualizada",
+        detalle: describePatch(patch),
+        entidadId: id,
+        personaId: id,
+        personaNombre: patch.nombre ?? persona?.nombre,
+      }, options.updatedBy);
+    });
   };
 
   const updateConfiguracionCes = (patch: Partial<ConfiguracionCes>) => {
@@ -315,7 +449,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
         },
       };
 
-      return {
+      return withMovimiento({
         ...current,
         configuracion: {
           ...current.configuracion,
@@ -326,43 +460,62 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
           fechaVencimiento: ces.fechaVencimiento,
         })),
         updatedAt: new Date().toISOString(),
-      };
+      }, {
+        tipo: "configuracion",
+        accion: "Configuracion CES actualizada",
+        detalle: describePatch({
+          ...patch,
+          fechaVencimientoCes: patch.fechaVencimiento,
+        }),
+      }, options.updatedBy);
     });
   };
 
   const updateConfiguracionSeguridad = (patch: Partial<ConfiguracionSeguridad>) => {
-    setState((current) => ({
-      ...current,
-      configuracion: {
-        ...current.configuracion,
-        seguridad: {
-          ...current.configuracion.seguridad,
-          ...patch,
+    setState((current) =>
+      withMovimiento({
+        ...current,
+        configuracion: {
+          ...current.configuracion,
+          seguridad: {
+            ...current.configuracion.seguridad,
+            ...patch,
+          },
         },
-      },
-      updatedAt: new Date().toISOString(),
-    }));
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "configuracion",
+        accion: "Seguridad actualizada",
+        detalle: describePatch(patch),
+      }, options.updatedBy),
+    );
   };
 
   const recalcularPagosCes = () => {
-    setState((current) => ({
-      ...current,
-      pagosCes: current.pagosCes.map((pago) => {
-        const emprendedor = current.emprendedores.find((persona) => persona.id === pago.emprendedorId);
-        const creditoBase = emprendedor?.creditoOriginal ?? pago.creditoBase;
-        const totalEsperado = getMontoCes(creditoBase, current.configuracion.ces.montosPorCredito);
+    setState((current) =>
+      withMovimiento({
+        ...current,
+        pagosCes: current.pagosCes.map((pago) => {
+          const emprendedor = current.emprendedores.find((persona) => persona.id === pago.emprendedorId);
+          const creditoBase = emprendedor?.creditoOriginal ?? pago.creditoBase;
+          const totalEsperado = getMontoCes(creditoBase, current.configuracion.ces.montosPorCredito);
 
-        return {
-          ...pago,
-          creditoBase,
-          fechaVencimiento: current.configuracion.ces.fechaVencimiento,
-          totalEsperado,
-          estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
-          confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
-        };
-      }),
-      updatedAt: new Date().toISOString(),
-    }));
+          return {
+            ...pago,
+            creditoBase,
+            fechaVencimiento: current.configuracion.ces.fechaVencimiento,
+            totalEsperado,
+            estadoPago: deriveEstadoPago(pago.montoPagado, totalEsperado, pago.estadoPago),
+            confirmadoPorTesorero: pago.montoPagado >= totalEsperado && totalEsperado > 0,
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "ces",
+        accion: "Pagos CES recalculados",
+        detalle: "Se recalcularon los montos CES segun credito y reglas vigentes.",
+      }, options.updatedBy),
+    );
   };
 
   const marcarPagado = (id: string) => {
@@ -375,7 +528,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       fechaAtraso: "",
       fechaPago: new Date().toISOString().slice(0, 10),
       confirmadoPorTesorero: true,
-    });
+    }, "Cobro marcado como pagado");
   };
 
   const marcarCesPagado = (id: string) => {
@@ -388,7 +541,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       fechaAtraso: "",
       fechaPago: new Date().toISOString().slice(0, 10),
       confirmadoPorTesorero: true,
-    });
+    }, "Pago CES marcado como pagado");
   };
 
   const cambiarEstado = (id: string, estadoPago: EstadoPago) => {
@@ -410,7 +563,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       patch.confirmadoPorTesorero = true;
     }
 
-    updateCobro(id, patch);
+    updateCobro(id, patch, `Estado de cobro cambiado a ${estadoPago}`);
   };
 
   const cambiarEstadoCes = (id: string, estadoPago: EstadoPago) => {
@@ -432,7 +585,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       patch.confirmadoPorTesorero = true;
     }
 
-    updateCes(id, patch);
+    updateCes(id, patch, `Estado CES cambiado a ${estadoPago}`);
   };
 
   const registrarMonto = (id: string, montoPagado: number) => {
@@ -448,7 +601,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       fechaAtraso: "",
       confirmadoPorTesorero: estadoPago === "pagado",
       fechaPago: montoPagado > 0 ? cobro.fechaPago || new Date().toISOString().slice(0, 10) : "",
-    });
+    }, "Monto de cobro registrado");
   };
 
   const registrarMontoCes = (id: string, montoPagado: number) => {
@@ -464,20 +617,20 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       fechaAtraso: "",
       confirmadoPorTesorero: estadoPago === "pagado",
       fechaPago: montoPagado > 0 ? pago.fechaPago || new Date().toISOString().slice(0, 10) : "",
-    });
+    }, "Monto CES registrado");
   };
 
   const actualizarDetalle = (
     id: string,
     detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
-  ) => updateCobro(id, detail);
+  ) => updateCobro(id, detail, "Detalle de cobro actualizado");
 
-  const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch);
+  const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch, "Cobro editado");
 
   const actualizarDetalleCes = (
     id: string,
     detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
-  ) => updateCes(id, detail);
+  ) => updateCes(id, detail, "Detalle CES actualizado");
 
   const registrarPagoMultiple = (
     ids: string[],
@@ -485,66 +638,103 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
   ) => {
     const selected = new Set(ids);
 
-    setState((current) => ({
-      ...current,
-      cobros: current.cobros.map((cobro) => {
-        if (!selected.has(cobro.id)) return cobro;
+    setState((current) => {
+      const cobrosSeleccionados = current.cobros.filter((cobro) => selected.has(cobro.id));
+      const persona = current.emprendedores.find((item) => item.id === cobrosSeleccionados[0]?.emprendedorId);
 
-        return {
-          ...cobro,
-          montoPagado: cobro.totalEsperado,
-          estadoPago: "pagado",
-          fechaAtraso: "",
-          fechaPago: detail.fechaPago,
-          metodoPago: detail.metodoPago,
-          referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
-          observacion: detail.observacion?.trim() || cobro.observacion,
-          confirmadoPorTesorero: true,
-        };
-      }),
-      updatedAt: new Date().toISOString(),
-    }));
+      return withMovimiento({
+        ...current,
+        cobros: current.cobros.map((cobro) => {
+          if (!selected.has(cobro.id)) return cobro;
+
+          return {
+            ...cobro,
+            montoPagado: cobro.totalEsperado,
+            estadoPago: "pagado",
+            fechaAtraso: "",
+            fechaPago: detail.fechaPago,
+            metodoPago: detail.metodoPago,
+            referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
+            observacion: detail.observacion?.trim() || cobro.observacion,
+            confirmadoPorTesorero: true,
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "cobro",
+        accion: "Pago multiple registrado",
+        detalle: `Se marcaron ${ids.length} cuota${ids.length === 1 ? "" : "s"} como pagada${ids.length === 1 ? "" : "s"}. Metodo: ${detail.metodoPago || "sin metodo"}.`,
+        entidadId: ids.join(","),
+        personaId: persona?.id,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
   };
 
   const crearReunion = (reunion: { titulo: string; fecha: string; lugar?: string; observacion?: string; acta?: string }) => {
     const id = `reunion-${reunion.fecha}-${Date.now()}`;
 
-    setState((current) => ({
-      ...current,
-      reuniones: [
-        ...current.reuniones,
-        {
-          id,
-          titulo: reunion.titulo.trim() || `Reunion ${current.reuniones.length + 1}`,
-          fecha: reunion.fecha,
-          lugar: reunion.lugar?.trim() ?? "",
-          observacion: reunion.observacion?.trim() ?? "",
-          acta: reunion.acta?.trim() ?? "",
-          asistencias: crearAsistenciasBase(current.emprendedores),
-        },
-      ],
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((current) =>
+      withMovimiento({
+        ...current,
+        reuniones: [
+          ...current.reuniones,
+          {
+            id,
+            titulo: reunion.titulo.trim() || `Reunion ${current.reuniones.length + 1}`,
+            fecha: reunion.fecha,
+            lugar: reunion.lugar?.trim() ?? "",
+            observacion: reunion.observacion?.trim() ?? "",
+            acta: reunion.acta?.trim() ?? "",
+            asistencias: crearAsistenciasBase(current.emprendedores),
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "reunion",
+        accion: "Reunion creada",
+        detalle: `${reunion.titulo.trim() || `Reunion ${current.reuniones.length + 1}`} · ${reunion.fecha}.`,
+        entidadId: id,
+      }, options.updatedBy),
+    );
 
     return id;
   };
 
   const updateReunion = (id: string, patch: Partial<Omit<Reunion, "id" | "asistencias">>) => {
-    setState((current) => ({
-      ...current,
-      reuniones: current.reuniones.map((reunion) =>
-        reunion.id === id ? { ...reunion, ...patch } : reunion,
-      ),
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((current) => {
+      const reunion = current.reuniones.find((item) => item.id === id);
+
+      return withMovimiento({
+        ...current,
+        reuniones: current.reuniones.map((item) =>
+          item.id === id ? { ...item, ...patch } : item,
+        ),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "reunion",
+        accion: "Reunion actualizada",
+        detalle: `${reunion?.titulo ?? "Reunion"}. ${describePatch(patch)}`,
+        entidadId: id,
+      }, options.updatedBy);
+    });
   };
 
   const eliminarReunion = (id: string) => {
-    setState((current) => ({
-      ...current,
-      reuniones: current.reuniones.filter((reunion) => reunion.id !== id),
-      updatedAt: new Date().toISOString(),
-    }));
+    setState((current) => {
+      const reunion = current.reuniones.find((item) => item.id === id);
+
+      return withMovimiento({
+        ...current,
+        reuniones: current.reuniones.filter((item) => item.id !== id),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "reunion",
+        accion: "Reunion eliminada",
+        detalle: reunion ? `${reunion.titulo} · ${reunion.fecha}.` : "Se elimino una reunion.",
+        entidadId: id,
+      }, options.updatedBy);
+    });
   };
 
   const updateAsistencia = (
@@ -552,43 +742,96 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     emprendedorId: string,
     patch: { estado?: EstadoAsistencia; observacion?: string },
   ) => {
-    setState((current) => ({
-      ...current,
-      reuniones: current.reuniones.map((reunion) => {
-        if (reunion.id !== reunionId) return reunion;
+    setState((current) => {
+      const reunion = current.reuniones.find((item) => item.id === reunionId);
+      const persona = current.emprendedores.find((item) => item.id === emprendedorId);
 
-        return {
-          ...reunion,
-          asistencias: reunion.asistencias.map((asistencia) =>
-            asistencia.emprendedorId === emprendedorId ? { ...asistencia, ...patch } : asistencia,
-          ),
-        };
-      }),
-      updatedAt: new Date().toISOString(),
-    }));
+      return withMovimiento({
+        ...current,
+        reuniones: current.reuniones.map((item) => {
+          if (item.id !== reunionId) return item;
+
+          return {
+            ...item,
+            asistencias: item.asistencias.map((asistencia) =>
+              asistencia.emprendedorId === emprendedorId ? { ...asistencia, ...patch } : asistencia,
+            ),
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "asistencia",
+        accion: "Asistencia actualizada",
+        detalle: `${reunion?.titulo ?? "Reunion"}. ${describePatch(patch)}${patch.estado ? ` Estado: ${patch.estado}.` : ""}`,
+        entidadId: reunionId,
+        personaId: persona?.id ?? emprendedorId,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
   };
 
   const marcarTodosPresentes = (reunionId: string) => {
-    setState((current) => ({
-      ...current,
-      reuniones: current.reuniones.map((reunion) => {
-        if (reunion.id !== reunionId) return reunion;
+    setState((current) => {
+      const reunion = current.reuniones.find((item) => item.id === reunionId);
 
-        return {
-          ...reunion,
-          asistencias: reunion.asistencias.map((asistencia) => ({
-            ...asistencia,
-            estado: "presente",
-          })),
-        };
-      }),
-      updatedAt: new Date().toISOString(),
-    }));
+      return withMovimiento({
+        ...current,
+        reuniones: current.reuniones.map((item) => {
+          if (item.id !== reunionId) return item;
+
+          return {
+            ...item,
+            asistencias: item.asistencias.map((asistencia) => ({
+              ...asistencia,
+              estado: "presente",
+            })),
+          };
+        }),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "asistencia",
+        accion: "Todos marcados presentes",
+        detalle: `${reunion?.titulo ?? "Reunion"}. Se marcaron ${reunion?.asistencias.length ?? 0} participantes presentes.`,
+        entidadId: reunionId,
+      }, options.updatedBy);
+    });
   };
 
-  const resetear = () => setState(tesoreriaInicial);
+  const resetear = () => {
+    setState((current) =>
+      withMovimiento({
+        ...tesoreriaInicial,
+        historial: current.historial ?? [],
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "respaldo",
+        accion: "Sistema reiniciado",
+        detalle: "Se restauraron los datos iniciales del sistema.",
+      }, options.updatedBy),
+    );
+  };
 
-  const importar = (nextState: TesoreriaState) => setState(migrateState(nextState));
+  const importar = (nextState: TesoreriaState) => {
+    setState((current) =>
+      withMovimiento(migrateState({
+        ...nextState,
+        historial: nextState.historial?.length ? nextState.historial : current.historial,
+      }), {
+        tipo: "respaldo",
+        accion: "Respaldo importado",
+        detalle: "Se importo un respaldo JSON y se reemplazo la informacion del sistema.",
+      }, options.updatedBy),
+    );
+  };
+
+  const registrarMovimiento = (movimiento: AuditInput) => {
+    setState((current) =>
+      withMovimiento({
+        ...current,
+        updatedAt: new Date().toISOString(),
+      }, movimiento, options.updatedBy),
+    );
+  };
 
   const personasPorId = useMemo(
     () => new Map(state.emprendedores.map((emprendedor) => [emprendedor.id, emprendedor])),
@@ -621,6 +864,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     eliminarReunion,
     updateAsistencia,
     marcarTodosPresentes,
+    registrarMovimiento,
     importar,
     resetear,
   };

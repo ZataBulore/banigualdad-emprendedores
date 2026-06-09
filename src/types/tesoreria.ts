@@ -109,6 +109,27 @@ export interface Reunion {
   asistencias: AsistenciaParticipante[];
 }
 
+export type TipoMovimiento =
+  | "cobro"
+  | "ces"
+  | "persona"
+  | "asistencia"
+  | "reunion"
+  | "configuracion"
+  | "respaldo";
+
+export interface MovimientoHistorial {
+  id: string;
+  fecha: string;
+  tipo: TipoMovimiento;
+  accion: string;
+  detalle: string;
+  entidadId?: string;
+  personaId?: string;
+  personaNombre?: string;
+  usuarioEmail: string;
+}
+
 export interface TesoreriaState {
   centro: Centro;
   configuracion: ConfiguracionSistema;
@@ -117,5 +138,6 @@ export interface TesoreriaState {
   cobros: CobroSemanal[];
   pagosCes: PagoCes[];
   reuniones: Reunion[];
+  historial: MovimientoHistorial[];
   updatedAt: string;
 }

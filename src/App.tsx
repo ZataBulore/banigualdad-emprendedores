@@ -33,12 +33,12 @@ import {
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
 import { isFirebaseConfigured, signInFirebaseWithGoogleCredential, signOutFirebase } from "./services/firebase";
-import type { Centro, CobroSemanal, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
 type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
-type ConfigTab = "general" | "seguridad" | "respaldo";
+type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "observacion">;
@@ -402,6 +402,7 @@ function App() {
     eliminarReunion,
     updateAsistencia,
     marcarTodosPresentes,
+    registrarMovimiento,
     importar,
     resetear,
   } = useTesoreria({ syncEnabled: Boolean(authUser), updatedBy: authUser?.email });
@@ -563,16 +564,42 @@ function App() {
       : emprendedoresFiltrados[0];
 
   const exportarJson = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const fecha = new Date().toISOString();
+    const movimientoExportacion: MovimientoHistorial = {
+      id: `mov-${fecha}-export-json`,
+      fecha,
+      tipo: "respaldo",
+      accion: "Respaldo JSON exportado",
+      detalle: "Se descargo un respaldo completo en formato JSON.",
+      usuarioEmail: authUser?.email ?? "sin usuario",
+    };
+    const blob = new Blob([
+      JSON.stringify({
+        ...state,
+        historial: [movimientoExportacion, ...(state.historial ?? [])],
+        updatedAt: fecha,
+      }, null, 2),
+    ], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
     link.download = `sistema-semilla-emprende-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    registrarMovimiento({
+      tipo: "respaldo",
+      accion: "Respaldo JSON exportado",
+      detalle: "Se descargo un respaldo completo en formato JSON.",
+    });
   };
 
   const exportarCsv = () => {
+    registrarMovimiento({
+      tipo: "respaldo",
+      accion: "Planilla CSV exportada",
+      detalle: "Se descargo una planilla CSV con cobros, CES y asistencias.",
+    });
+
     const rows = [
       ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
       ...state.cobros.map((cobro) => {
@@ -1958,6 +1985,9 @@ function ConfigPanel({
         <button className={configTab === "seguridad" ? "active" : ""} onClick={() => setConfigTab("seguridad")}>
           <ShieldCheck size={17} /> Seguridad
         </button>
+        <button className={configTab === "historial" ? "active" : ""} onClick={() => setConfigTab("historial")}>
+          <History size={17} /> Historial
+        </button>
         <button className={configTab === "respaldo" ? "active" : ""} onClick={() => setConfigTab("respaldo")}>
           <Download size={17} /> Respaldo
         </button>
@@ -2024,6 +2054,10 @@ function ConfigPanel({
           onImport={onImport}
           onReset={onReset}
         />
+      )}
+
+      {configTab === "historial" && (
+        <HistorialPanel movimientos={state.historial ?? []} />
       )}
 
       {configTab === "general" && (
@@ -2225,6 +2259,108 @@ function BackupPanel({
           <RotateCcw size={18} /> Reiniciar
         </button>
       </div>
+    </section>
+  );
+}
+
+function HistorialPanel({ movimientos }: { movimientos: MovimientoHistorial[] }) {
+  const [busquedaHistorial, setBusquedaHistorial] = useState("");
+  const [pagina, setPagina] = useState(1);
+  const pageSize = 12;
+  const query = busquedaHistorial.trim().toLowerCase();
+  const movimientosFiltrados = useMemo(
+    () =>
+      movimientos.filter((movimiento) =>
+        [
+          movimiento.fecha,
+          movimiento.tipo,
+          movimiento.accion,
+          movimiento.detalle,
+          movimiento.personaNombre,
+          movimiento.usuarioEmail,
+          movimiento.entidadId,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query),
+      ),
+    [movimientos, query],
+  );
+  const totalPaginas = Math.max(Math.ceil(movimientosFiltrados.length / pageSize), 1);
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const inicio = (paginaActual - 1) * pageSize;
+  const paginaMovimientos = movimientosFiltrados.slice(inicio, inicio + pageSize);
+
+  useEffect(() => {
+    setPagina(1);
+  }, [query]);
+
+  return (
+    <section className="config-section audit-section">
+      <header>
+        <div>
+          <p className="eyebrow">Auditoria</p>
+          <h2>Historial de movimientos</h2>
+        </div>
+        <History size={22} />
+      </header>
+
+      <div className="audit-toolbar">
+        <SearchInput
+          value={busquedaHistorial}
+          onChange={setBusquedaHistorial}
+          placeholder="Buscar accion, persona, correo, tipo o detalle"
+        />
+        <div className="audit-count">
+          <strong>{movimientosFiltrados.length}</strong>
+          <span>movimientos</span>
+        </div>
+      </div>
+
+      <div className="audit-table-wrap">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Accion</th>
+              <th>Para quien</th>
+              <th>Usuario</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginaMovimientos.map((movimiento) => (
+              <tr key={movimiento.id}>
+                <td>{formatDateTime(movimiento.fecha)}</td>
+                <td><span className={`audit-type ${movimiento.tipo}`}>{movimiento.tipo}</span></td>
+                <td><strong>{movimiento.accion}</strong></td>
+                <td>{movimiento.personaNombre || movimiento.personaId || "Sistema"}</td>
+                <td>{movimiento.usuarioEmail}</td>
+                <td>{movimiento.detalle}</td>
+              </tr>
+            ))}
+            {!paginaMovimientos.length && (
+              <tr>
+                <td colSpan={6}>
+                  <p className="empty-state">Aun no hay movimientos para mostrar.</p>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <footer className="audit-pagination">
+        <button className="secondary-button" onClick={() => setPagina((current) => Math.max(current - 1, 1))} disabled={paginaActual <= 1}>
+          Anterior
+        </button>
+        <span>Pagina {paginaActual} de {totalPaginas}</span>
+        <button className="secondary-button" onClick={() => setPagina((current) => Math.min(current + 1, totalPaginas))} disabled={paginaActual >= totalPaginas}>
+          Siguiente
+        </button>
+      </footer>
     </section>
   );
 }
