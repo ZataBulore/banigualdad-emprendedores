@@ -32,6 +32,10 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_AUTHORIZED_EMAILS: ${{ vars.VITE_AUTHORIZED_EMAILS }}
+          VITE_EMAIL_ADMIN_PASSWORD_HASH: ${{ secrets.VITE_EMAIL_ADMIN_PASSWORD_HASH }}
         run: npm run build
 
       - name: Upload Pages artifact

@@ -21,6 +21,7 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Sprout,
   Trash2,
   Upload,
   Users,
@@ -58,6 +59,10 @@ const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "
   .split(/[,\n;]/)
   .map((email: string) => email.trim().toLowerCase())
   .filter(Boolean);
+const DEFAULT_EMAIL_ADMIN_PASSWORD_HASH = "589c28b7d0ad18ffd68f975471d24dd60d78b0a4850524e7540f45f309713b50";
+const EMAIL_ADMIN_PASSWORD_HASH = String(import.meta.env.VITE_EMAIL_ADMIN_PASSWORD_HASH ?? DEFAULT_EMAIL_ADMIN_PASSWORD_HASH)
+  .trim()
+  .toLowerCase();
 const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 
@@ -158,6 +163,21 @@ const normalizeEmailList = (emails: string[]) =>
   );
 
 const parseEmailList = (value: string) => normalizeEmailList(value.split(/[,\n;]/));
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const sha256Hex = async (value: string) => {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const verifyEmailAdminPassword = async (password: string) => {
+  if (!EMAIL_ADMIN_PASSWORD_HASH) return false;
+  return (await sha256Hex(password)) === EMAIL_ADMIN_PASSWORD_HASH;
+};
 
 const decodeGoogleCredential = (credential: string): AuthUser => {
   const [, payload] = credential.split(".");
@@ -1043,11 +1063,17 @@ function LoginGate({
   return (
     <main className="login-shell">
       <section className="login-card">
-        <div className="login-icon">
-          <LockKeyhole size={30} />
+        <div className="login-brand">
+          <div className="login-icon">
+            <Sprout size={31} strokeWidth={2.1} />
+          </div>
+          <div>
+            <span>Negrete</span>
+            <strong>Semilla Emprende</strong>
+          </div>
         </div>
         <p className="eyebrow">Acceso privado</p>
-        <h1>Sistema Semilla Emprende</h1>
+        <h1>Sistema del grupo</h1>
         <p className="login-copy">
           Ingresa con una cuenta de Google autorizada para ver cobros, personas, CES y reuniones del grupo.
         </p>
@@ -1853,8 +1879,9 @@ function ConfigPanel({
   onReset: () => void;
 }) {
   const [configTab, setConfigTab] = useState<ConfigTab>("general");
+  const [emailsModalOpen, setEmailsModalOpen] = useState(false);
   const cesRules = state.configuracion.ces.montosPorCredito;
-  const authorizedEmailsText = state.configuracion.seguridad.correosAutorizados.join("\n");
+  const authorizedEmails = state.configuracion.seguridad.correosAutorizados;
 
   return (
     <section className="workspace config-panel">
@@ -1879,18 +1906,30 @@ function ConfigPanel({
             </div>
             <ShieldCheck size={22} />
           </header>
-          <label className="config-field">
-            <span>Lista de correos Google</span>
-            <textarea
-              value={authorizedEmailsText}
-              onChange={(event) => onSeguridad({ correosAutorizados: parseEmailList(event.target.value) })}
-              rows={4}
-              placeholder="correo1@gmail.com&#10;correo2@gmail.com"
-            />
-          </label>
+          <div className="security-summary">
+            <div>
+              <span>Correos con acceso</span>
+              <strong>{authorizedEmails.length}</strong>
+            </div>
+            <button className="primary-button" onClick={() => setEmailsModalOpen(true)}>
+              <LockKeyhole size={18} /> Administrar correos
+            </button>
+          </div>
           <p className="config-note">
-            Puedes escribir un correo por linea, separado por coma o punto y coma. Si la lista queda vacia, cualquier cuenta Google podra entrar mientras configuras el sistema.
+            La lista completa solo se muestra dentro del modal protegido. Para agregar o quitar correos se exige la contraseña administrativa y una confirmacion.
           </p>
+          {!EMAIL_ADMIN_PASSWORD_HASH && (
+            <p className="config-note warning-note">
+              Falta configurar `VITE_EMAIL_ADMIN_PASSWORD_HASH`; mientras no exista, no se podran editar los correos desde el sistema.
+            </p>
+          )}
+          {emailsModalOpen && (
+            <AuthorizedEmailsModal
+              emails={authorizedEmails}
+              onClose={() => setEmailsModalOpen(false)}
+              onSave={(correosAutorizados) => onSeguridad({ correosAutorizados })}
+            />
+          )}
         </section>
       )}
 
@@ -2096,6 +2135,162 @@ function BackupPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+function AuthorizedEmailsModal({
+  emails,
+  onClose,
+  onSave,
+}: {
+  emails: string[];
+  onClose: () => void;
+  onSave: (emails: string[]) => void;
+}) {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [password, setPassword] = useState("");
+  const [emailsText, setEmailsText] = useState(() => emails.join("\n"));
+  const [error, setError] = useState("");
+  const [isChecking, setIsChecking] = useState(false);
+
+  const unlock = async () => {
+    setError("");
+
+    if (!EMAIL_ADMIN_PASSWORD_HASH) {
+      setError("Falta configurar la contrasena administrativa para editar correos.");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Ingresa la contrasena administrativa.");
+      return;
+    }
+
+    setIsChecking(true);
+    const isValidPassword = await verifyEmailAdminPassword(password);
+    setIsChecking(false);
+
+    if (!isValidPassword) {
+      setError("La contrasena no coincide. No se pueden mostrar ni editar los correos.");
+      return;
+    }
+
+    setPassword("");
+    setEmailsText(emails.join("\n"));
+    setIsUnlocked(true);
+  };
+
+  const save = () => {
+    const rawEmails = emailsText
+      .split(/[,\n;]/)
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+    const invalidEmails = rawEmails.filter((email) => !isValidEmail(email));
+    const nextEmails = normalizeEmailList(rawEmails);
+
+    if (invalidEmails.length) {
+      setError(`Revisa estos correos: ${invalidEmails.join(", ")}`);
+      return;
+    }
+
+    const added = nextEmails.filter((email) => !emails.includes(email));
+    const removed = emails.filter((email) => !nextEmails.includes(email));
+    const changes = [
+      added.length ? `${added.length} agregado${added.length === 1 ? "" : "s"}` : "",
+      removed.length ? `${removed.length} eliminado${removed.length === 1 ? "" : "s"}` : "",
+    ].filter(Boolean);
+
+    if (!changes.length) {
+      onClose();
+      return;
+    }
+
+    if (
+      !confirmarAccionCritica(
+        `Guardar cambios en correos autorizados? Se aplicaran ${changes.join(" y ")}. Esta accion modifica quien puede ingresar al sistema.`,
+      )
+    ) {
+      return;
+    }
+
+    onSave(nextEmails);
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal security-modal" role="dialog" aria-modal="true" aria-labelledby="authorized-emails-title">
+        <header>
+          <div>
+            <p className="eyebrow">Seguridad</p>
+            <h2 id="authorized-emails-title">Correos autorizados</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar correos autorizados">
+            <X size={20} />
+          </button>
+        </header>
+
+        {!isUnlocked ? (
+          <section className="security-lock-panel">
+            <LockKeyhole size={28} />
+            <div>
+              <strong>Modal protegido</strong>
+              <p>Ingresa la contrasena administrativa para ver, agregar o eliminar correos autorizados.</p>
+            </div>
+            <label className="modal-field">
+              <span>Contrasena administrativa</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void unlock();
+                }}
+                autoFocus
+              />
+            </label>
+            {error && <div className="modal-error">{error}</div>}
+            <footer>
+              <button className="secondary-button" onClick={onClose}>
+                Cancelar
+              </button>
+              <button className="primary-button" onClick={() => void unlock()} disabled={isChecking}>
+                <ShieldCheck size={18} /> {isChecking ? "Verificando" : "Desbloquear"}
+              </button>
+            </footer>
+          </section>
+        ) : (
+          <>
+            <div className="modal-info">
+              <ShieldCheck size={18} />
+              <span>Los cambios requieren confirmacion antes de guardarse. Si la lista queda vacia, cualquier cuenta Google podria ingresar.</span>
+            </div>
+            <label className="modal-field authorized-emails-field">
+              <span>Lista de correos Google</span>
+              <textarea
+                value={emailsText}
+                onChange={(event) => {
+                  setEmailsText(event.target.value);
+                  setError("");
+                }}
+                rows={8}
+                placeholder="correo1@gmail.com&#10;correo2@gmail.com"
+              />
+              <small>Escribe un correo por linea, separado por coma o punto y coma.</small>
+            </label>
+            {error && <div className="modal-error">{error}</div>}
+            <footer>
+              <button className="secondary-button" onClick={onClose}>
+                Cancelar
+              </button>
+              <button className="primary-button" onClick={save}>
+                <Check size={18} /> Guardar cambios
+              </button>
+            </footer>
+          </>
+        )}
+      </section>
+    </div>
   );
 }
 
