@@ -433,10 +433,8 @@ function App() {
     if (isFirebaseConfigured) {
       try {
         await signInFirebaseWithGoogleCredential(credential);
-      } catch {
-        setAuthUser(null);
-        setAuthError("Google inicio sesion, pero Firebase no autorizo la conexion. Revisa Firebase Auth y los dominios autorizados.");
-        return;
+      } catch (error) {
+        console.warn("Firebase Auth no pudo enlazar la sesion de Google.", error);
       }
     }
 
