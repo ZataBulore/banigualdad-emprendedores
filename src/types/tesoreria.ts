@@ -2,6 +2,10 @@ export type EstadoPago = "pendiente" | "pagado" | "parcial" | "atrasado" | "revi
 
 export type MetodoPago = "efectivo" | "transferencia" | "otro" | "";
 
+export type EstadoAsistencia = "pendiente" | "presente" | "ausente" | "justificado";
+
+export type EstadoPersona = "activa" | "de_baja";
+
 export interface Centro {
   idCentro: string;
   nombreCentro: string;
@@ -23,6 +27,10 @@ export interface Emprendedor {
   nombre: string;
   rut: string;
   whatsapp?: string;
+  estado: EstadoPersona;
+  fechaBaja?: string;
+  motivoBaja?: string;
+  observacionBaja?: string;
   anillo: number;
   creditoOriginal: number;
   notas?: string;
@@ -77,6 +85,22 @@ export interface Periodo {
   estadoCarga: "completo" | "revisar" | "pendiente";
 }
 
+export interface AsistenciaParticipante {
+  emprendedorId: string;
+  estado: EstadoAsistencia;
+  observacion: string;
+}
+
+export interface Reunion {
+  id: string;
+  titulo: string;
+  fecha: string;
+  lugar: string;
+  observacion: string;
+  acta: string;
+  asistencias: AsistenciaParticipante[];
+}
+
 export interface TesoreriaState {
   centro: Centro;
   configuracion: ConfiguracionSistema;
@@ -84,5 +108,6 @@ export interface TesoreriaState {
   emprendedores: Emprendedor[];
   cobros: CobroSemanal[];
   pagosCes: PagoCes[];
+  reuniones: Reunion[];
   updatedAt: string;
 }

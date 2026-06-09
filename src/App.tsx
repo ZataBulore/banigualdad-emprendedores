@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  CalendarCheck,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  Plus,
   ReceiptText,
   RotateCcw,
   Search,
@@ -23,13 +25,13 @@ import {
 } from "lucide-react";
 import { ChangeEvent, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
-import type { Centro, CobroSemanal, ConfiguracionCes, Emprendedor, EstadoPago, MetodoPago, PagoCes, Periodo, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ConfiguracionCes, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
-type Tab = "cobros" | "ces" | "personas" | "respaldo" | "config";
+type Tab = "cobros" | "ces" | "personas" | "asistencias" | "respaldo" | "config";
 type FiltroEstado = "todos" | EstadoPago;
-type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "creditoOriginal" | "anillo" | "notas">;
+type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -40,6 +42,20 @@ const estadoLabels: Record<EstadoPago, string> = {
 };
 
 const estadoOptions: FiltroEstado[] = ["todos", "pendiente", "pagado", "parcial", "atrasado", "revisar"];
+
+const asistenciaLabels: Record<EstadoAsistencia, string> = {
+  pendiente: "Pendiente",
+  presente: "Presente",
+  ausente: "Ausente",
+  justificado: "Justificado",
+};
+
+const asistenciaOptions: EstadoAsistencia[] = ["presente", "ausente", "justificado", "pendiente"];
+
+const personaEstadoLabels: Record<EstadoPersona, string> = {
+  activa: "Activa",
+  de_baja: "De baja",
+};
 
 const metodoOptions: { label: string; value: MetodoPago }[] = [
   { label: "Metodo", value: "" },
@@ -125,6 +141,10 @@ const matchesPersonaSearch = (
     persona.nombre,
     persona.rut,
     persona.whatsapp,
+    personaEstadoLabels[persona.estado],
+    persona.fechaBaja,
+    persona.motivoBaja,
+    persona.observacionBaja,
     persona.creditoOriginal,
     persona.anillo,
     persona.notas,
@@ -201,6 +221,24 @@ const validatePersonaForm = (
     errors.notas = "La nota no puede superar 200 caracteres.";
   }
 
+  if (form.estado === "de_baja") {
+    if (!form.fechaBaja) {
+      errors.fechaBaja = "Ingresa la fecha de baja.";
+    }
+
+    if (!(form.motivoBaja ?? "").trim()) {
+      errors.motivoBaja = "Ingresa el motivo de la baja.";
+    }
+  }
+
+  if ((form.motivoBaja ?? "").length > 120) {
+    errors.motivoBaja = "El motivo no puede superar 120 caracteres.";
+  }
+
+  if ((form.observacionBaja ?? "").length > 220) {
+    errors.observacionBaja = "La observacion no puede superar 220 caracteres.";
+  }
+
   if (!isValidWhatsapp(form.whatsapp)) {
     errors.whatsapp = "Ingresa un WhatsApp chileno valido, por ejemplo +56 9 1234 5678.";
   }
@@ -226,11 +264,15 @@ function App() {
     actualizarDetalle,
     actualizarDetalleCes,
     registrarPagoMultiple,
+    crearReunion,
+    updateReunion,
+    updateAsistencia,
     importar,
     resetear,
   } = useTesoreria();
   const [tab, setTab] = useState<Tab>("cobros");
   const [periodoId, setPeriodoId] = useState(state.periodos[0]?.id ?? "");
+  const [reunionId, setReunionId] = useState(state.reuniones[0]?.id ?? "");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [busqueda, setBusqueda] = useState("");
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
@@ -239,6 +281,7 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const periodo = state.periodos.find((item) => item.id === periodoId) ?? state.periodos[0];
+  const reunionActiva = state.reuniones.find((item) => item.id === reunionId) ?? state.reuniones[0];
   const cobrosPeriodo = state.cobros.filter((cobro) => cobro.periodoId === periodo?.id);
   const totals = getPeriodoTotals(cobrosPeriodo);
   const cesTotals = getPeriodoTotals(state.pagosCes);
@@ -288,6 +331,29 @@ function App() {
     [busqueda, state.emprendedores],
   );
 
+  const asistenciasFiltradas = useMemo(() => {
+    if (!reunionActiva) return [];
+
+    return reunionActiva.asistencias.filter((asistencia) =>
+      matchesPersonaSearch(personasPorId.get(asistencia.emprendedorId), busqueda, [
+        asistencia.estado,
+        asistencia.observacion,
+        reunionActiva.titulo,
+        reunionActiva.fecha,
+        reunionActiva.lugar,
+        reunionActiva.acta,
+      ]),
+    );
+  }, [busqueda, personasPorId, reunionActiva]);
+
+  const asistenciaTotales = useMemo(() => {
+    const base = { total: reunionActiva?.asistencias.length ?? 0, presente: 0, ausente: 0, justificado: 0, pendiente: 0 };
+    reunionActiva?.asistencias.forEach((asistencia) => {
+      base[asistencia.estado] += 1;
+    });
+    return base;
+  }, [reunionActiva]);
+
   const personaSeleccionada = personaActiva
     ? state.emprendedores.find((persona) => persona.id === personaActiva)
     : null;
@@ -301,14 +367,14 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `tesoreria-semilla-emprende-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `sistema-semilla-emprende-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
 
   const exportarCsv = () => {
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -319,6 +385,9 @@ function App() {
           persona?.nombre ?? "",
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
+          persona ? personaEstadoLabels[persona.estado] : "",
+          persona?.fechaBaja ?? "",
+          persona?.motivoBaja ?? "",
           persona?.creditoOriginal ?? "",
           cobro.cuota,
           cobro.seguro,
@@ -329,6 +398,7 @@ function App() {
           cobro.metodoPago,
           cobro.referenciaPago,
           cobro.observacion,
+          "",
         ];
       }),
       ...state.pagosCes.map((pago) => {
@@ -340,6 +410,9 @@ function App() {
           persona?.nombre ?? "",
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
+          persona ? personaEstadoLabels[persona.estado] : "",
+          persona?.fechaBaja ?? "",
+          persona?.motivoBaja ?? "",
           pago.creditoBase,
           "",
           "",
@@ -350,8 +423,36 @@ function App() {
           pago.metodoPago,
           pago.referenciaPago,
           pago.observacion,
+          "",
         ];
       }),
+      ...state.reuniones.flatMap((reunion) =>
+        reunion.asistencias.map((asistencia) => {
+          const persona = personasPorId.get(asistencia.emprendedorId);
+          return [
+            "asistencia",
+            reunion.titulo,
+            reunion.fecha,
+            persona?.nombre ?? "",
+            persona?.rut ?? "",
+            persona?.whatsapp ?? "",
+            persona ? personaEstadoLabels[persona.estado] : "",
+            persona?.fechaBaja ?? "",
+            persona?.motivoBaja ?? "",
+            persona?.creditoOriginal ?? "",
+            "",
+            "",
+            "",
+            "",
+            asistencia.estado,
+            "",
+            reunion.lugar,
+            "",
+            asistencia.observacion || reunion.observacion,
+            reunion.acta,
+          ];
+        }),
+      ),
     ];
 
     const csv = rows
@@ -362,7 +463,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `tesoreria-semilla-emprende-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `sistema-semilla-emprende-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -381,7 +482,7 @@ function App() {
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">Fundacion Banigualdad</p>
-          <h1>Tesoreria Semilla Emprende</h1>
+          <h1>Sistema Semilla Emprende</h1>
           <p>{state.centro.nombreCentro} · {state.centro.zona}</p>
         </div>
         <div className="hero-actions">
@@ -445,6 +546,9 @@ function App() {
         </button>
         <button className={tab === "personas" ? "active" : ""} onClick={() => setTab("personas")}>
           <Users size={18} /> Personas
+        </button>
+        <button className={tab === "asistencias" ? "active" : ""} onClick={() => setTab("asistencias")}>
+          <CalendarCheck size={18} /> Asist.
         </button>
         <button className={tab === "respaldo" ? "active" : ""} onClick={() => setTab("respaldo")}>
           <Download size={18} /> Respaldo
@@ -605,7 +709,7 @@ function App() {
                   onClick={() => setPersonaActiva(persona.id)}
                 >
                   <span>{persona.nombre}</span>
-                  <small>{persona.rut}</small>
+                  <small>{persona.rut} · {personaEstadoLabels[persona.estado]}</small>
                 </button>
               ))}
               {!emprendedoresFiltrados.length && <p className="empty-state">No hay personas para esta busqueda.</p>}
@@ -617,6 +721,27 @@ function App() {
             />
           </div>
         </section>
+      )}
+
+      {tab === "asistencias" && (
+        <AsistenciasPanel
+          reuniones={state.reuniones}
+          personasPorId={personasPorId}
+          personas={state.emprendedores}
+          reunionActiva={reunionActiva}
+          reunionId={reunionId}
+          onReunionActiva={setReunionId}
+          onCrearReunion={(payload) => {
+            const nextId = crearReunion(payload);
+            setReunionId(nextId);
+          }}
+          onReunion={updateReunion}
+          asistencias={asistenciasFiltradas}
+          totals={asistenciaTotales}
+          busqueda={busqueda}
+          onBusqueda={setBusqueda}
+          onAsistencia={updateAsistencia}
+        />
       )}
 
       {tab === "respaldo" && (
@@ -739,6 +864,11 @@ function SectionBanner({
       detail: "Ficha, historial y contacto por WhatsApp",
       icon: <Users size={20} />,
     },
+    asistencias: {
+      title: "Asistencias",
+      detail: "Reuniones, asistencia y actas del grupo",
+      icon: <CalendarCheck size={20} />,
+    },
     respaldo: {
       title: "Respaldo",
       detail: "Exportar, importar y proteger registros",
@@ -815,7 +945,7 @@ function CobroCard({
       <header>
         <button className="person-link" onClick={onPersona}>
           <strong>{persona.nombre}</strong>
-          <span>{persona.rut}</span>
+          <span>{persona.rut} · {personaEstadoLabels[persona.estado]}</span>
         </button>
         <div className="card-header-actions">
           <button className="icon-button" onClick={onEditarPersona} aria-label={`Editar ${persona.nombre}`}>
@@ -971,11 +1101,21 @@ function PersonaPanel({
         </div>
         <div className="person-panel-actions">
           <strong>{formatCurrency(persona.creditoOriginal)}</strong>
+          <span className={`person-status ${persona.estado}`}>{personaEstadoLabels[persona.estado]}</span>
           <button className="icon-button" onClick={() => onEditarPersona(persona)} aria-label={`Editar ${persona.nombre}`}>
             <Pencil size={17} />
           </button>
         </div>
       </header>
+
+      {persona.estado === "de_baja" && (
+        <section className="inactive-panel">
+          <strong>Persona dada de baja</strong>
+          <span>{persona.fechaBaja ? `Fecha: ${formatDate(persona.fechaBaja)}` : "Sin fecha registrada"}</span>
+          <span>Motivo: {persona.motivoBaja || "Sin motivo registrado"}</span>
+          {persona.observacionBaja && <p>{persona.observacionBaja}</p>}
+        </section>
+      )}
 
       {persona.notas && <p className="inline-alert">{persona.notas}</p>}
 
@@ -1089,7 +1229,7 @@ function CesCard({
       <header>
         <button className="person-link" onClick={onPersona}>
           <strong>{persona.nombre}</strong>
-          <span>{persona.rut}</span>
+          <span>{persona.rut} · {personaEstadoLabels[persona.estado]}</span>
         </button>
         <div className="card-header-actions">
           <button className="icon-button" onClick={onEditarPersona} aria-label={`Editar ${persona.nombre}`}>
@@ -1188,6 +1328,204 @@ function CesCard({
         <span>Saldo CES: {formatCurrency(saldo)}</span>
       </footer>
     </article>
+  );
+}
+
+function AsistenciasPanel({
+  reuniones,
+  personasPorId,
+  personas,
+  reunionActiva,
+  reunionId,
+  onReunionActiva,
+  onCrearReunion,
+  onReunion,
+  asistencias,
+  totals,
+  busqueda,
+  onBusqueda,
+  onAsistencia,
+}: {
+  reuniones: Reunion[];
+  personasPorId: Map<string, Emprendedor>;
+  personas: Emprendedor[];
+  reunionActiva?: Reunion;
+  reunionId: string;
+  onReunionActiva: (id: string) => void;
+  onCrearReunion: (payload: { titulo: string; fecha: string; lugar?: string; observacion?: string; acta?: string }) => void;
+  onReunion: (id: string, patch: Partial<Omit<Reunion, "id" | "asistencias">>) => void;
+  asistencias: Reunion["asistencias"];
+  totals: { total: number; presente: number; ausente: number; justificado: number; pendiente: number };
+  busqueda: string;
+  onBusqueda: (value: string) => void;
+  onAsistencia: (reunionId: string, emprendedorId: string, patch: { estado?: EstadoAsistencia; observacion?: string }) => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [titulo, setTitulo] = useState("");
+  const [fecha, setFecha] = useState(today);
+  const [lugar, setLugar] = useState("");
+  const [acta, setActa] = useState("");
+
+  const crear = () => {
+    onCrearReunion({
+      titulo: titulo.trim() || `Reunion ${reuniones.length + 1}`,
+      fecha,
+      lugar,
+      acta,
+    });
+    setTitulo("");
+    setFecha(today);
+    setLugar("");
+    setActa("");
+  };
+
+  return (
+    <section className="workspace attendance-panel">
+      <section className="attendance-create">
+        <div>
+          <p className="eyebrow">Nueva reunion</p>
+          <h2>Asistencia y acta</h2>
+        </div>
+        <div className="attendance-create-grid">
+          <label>
+            <span>Titulo</span>
+            <input value={titulo} onChange={(event) => setTitulo(event.target.value)} placeholder={`Reunion ${reuniones.length + 1}`} />
+          </label>
+          <label>
+            <span>Fecha</span>
+            <input type="date" value={fecha} onChange={(event) => setFecha(event.target.value)} />
+          </label>
+          <label>
+            <span>Lugar</span>
+            <input value={lugar} onChange={(event) => setLugar(event.target.value)} placeholder="Opcional" />
+          </label>
+          <label className="attendance-acta-create">
+            <span>Acta inicial</span>
+            <textarea value={acta} onChange={(event) => setActa(event.target.value)} placeholder="Resumen, acuerdos o temas tratados" rows={3} />
+          </label>
+          <button className="primary-button" onClick={crear}>
+            <Plus size={18} /> Crear
+          </button>
+        </div>
+      </section>
+
+      {reuniones.length > 0 ? (
+        <>
+          <div className="meeting-strip" role="list" aria-label="Reuniones">
+            {reuniones.map((reunion) => (
+              <button
+                key={reunion.id}
+                className={reunion.id === reunionId || (!reunionId && reunion.id === reunionActiva?.id) ? "meeting-pill active" : "meeting-pill"}
+                onClick={() => onReunionActiva(reunion.id)}
+              >
+                <strong>{reunion.titulo}</strong>
+                <span>{formatDate(reunion.fecha)}</span>
+              </button>
+            ))}
+          </div>
+
+          {reunionActiva && (
+            <>
+              <section className="attendance-meeting-card">
+                <div className="attendance-meeting-title">
+                  <div>
+                    <p className="eyebrow">Reunion seleccionada</p>
+                    <h2>{reunionActiva.titulo}</h2>
+                    <span>{formatDate(reunionActiva.fecha)} · {reunionActiva.lugar || "Sin lugar"}</span>
+                  </div>
+                  <strong>{totals.presente}/{totals.total}</strong>
+                </div>
+                <div className="attendance-edit-grid">
+                  <label>
+                    <span>Titulo</span>
+                    <input value={reunionActiva.titulo} onChange={(event) => onReunion(reunionActiva.id, { titulo: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>Fecha</span>
+                    <input type="date" value={reunionActiva.fecha} onChange={(event) => onReunion(reunionActiva.id, { fecha: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>Lugar</span>
+                    <input value={reunionActiva.lugar} onChange={(event) => onReunion(reunionActiva.id, { lugar: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>Nota corta</span>
+                    <input value={reunionActiva.observacion} onChange={(event) => onReunion(reunionActiva.id, { observacion: event.target.value })} />
+                  </label>
+                </div>
+                <label className="attendance-acta">
+                  <span>Acta de reunion</span>
+                  <textarea
+                    value={reunionActiva.acta}
+                    onChange={(event) => onReunion(reunionActiva.id, { acta: event.target.value })}
+                    placeholder="Resumen de la reunion, acuerdos, compromisos y pendientes"
+                    rows={5}
+                  />
+                </label>
+              </section>
+
+              <section className="summary-grid compact attendance-summary">
+                <SummaryCard icon={<CheckCircle2 />} label="Presentes" value={String(totals.presente)} tone="success" />
+                <SummaryCard icon={<AlertTriangle />} label="Ausentes" value={String(totals.ausente)} tone="warning" />
+                <SummaryCard icon={<CalendarCheck />} label="Justificados" value={String(totals.justificado)} tone="info" />
+                <SummaryCard icon={<History />} label="Pendientes" value={String(totals.pendiente)} />
+              </section>
+
+              <SearchInput
+                className="people-search"
+                value={busqueda}
+                onChange={onBusqueda}
+                placeholder="Buscar participante, RUT o estado"
+              />
+
+              <div className="attendance-list">
+                {asistencias.map((asistencia) => {
+                  const persona = personasPorId.get(asistencia.emprendedorId);
+                  if (!persona) return null;
+
+                  return (
+                    <article key={asistencia.emprendedorId} className={`attendance-row ${asistencia.estado}`}>
+                      <header>
+                        <div>
+                          <strong>{persona.nombre}</strong>
+                          <span>{persona.rut}</span>
+                        </div>
+                        <span className={`badge ${asistencia.estado}`}>{asistenciaLabels[asistencia.estado]}</span>
+                      </header>
+                      <div className="attendance-actions">
+                        {asistenciaOptions.map((estado) => (
+                          <button
+                            key={estado}
+                            className={asistencia.estado === estado ? "active" : ""}
+                            onClick={() => onAsistencia(reunionActiva.id, asistencia.emprendedorId, { estado })}
+                          >
+                            {asistenciaLabels[estado]}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="attendance-note">
+                        <span>Observacion</span>
+                        <input
+                          value={asistencia.observacion}
+                          onChange={(event) => onAsistencia(reunionActiva.id, asistencia.emprendedorId, { observacion: event.target.value })}
+                          placeholder="Opcional"
+                        />
+                      </label>
+                    </article>
+                  );
+                })}
+                {!asistencias.length && <p className="empty-state">No hay participantes para esta busqueda.</p>}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <section className="empty-state attendance-empty">
+          <CalendarCheck size={22} />
+          <span>Crea la primera reunion para comenzar a marcar asistencia de los {personas.length} participantes.</span>
+        </section>
+      )}
+    </section>
   );
 }
 
@@ -1313,7 +1651,7 @@ function ConfigPanel({
           className="people-search"
           value={busqueda}
           onChange={onBusqueda}
-          placeholder="Buscar nombre, RUT, WhatsApp, credito o nota"
+          placeholder="Buscar nombre, RUT, WhatsApp, estado, credito o nota"
         />
         <div className="people-config-list">
           {personasFiltradas.map((persona) => (
@@ -1321,6 +1659,31 @@ function ConfigPanel({
               <ConfigInput label="Nombre" value={persona.nombre} onChange={(value) => onPersona(persona.id, { nombre: value })} />
               <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
               <ConfigInput label="WhatsApp" value={persona.whatsapp ?? ""} onChange={(value) => onPersona(persona.id, { whatsapp: value })} />
+              <label className="config-field">
+                <span>Estado</span>
+                <select
+                  value={persona.estado}
+                  onChange={(event) => {
+                    const estado = event.target.value as EstadoPersona;
+                    onPersona(persona.id, {
+                      estado,
+                      fechaBaja: estado === "activa" ? "" : persona.fechaBaja,
+                      motivoBaja: estado === "activa" ? "" : persona.motivoBaja,
+                      observacionBaja: estado === "activa" ? "" : persona.observacionBaja,
+                    });
+                  }}
+                >
+                  <option value="activa">Activa</option>
+                  <option value="de_baja">De baja</option>
+                </select>
+              </label>
+              {persona.estado === "de_baja" && (
+                <>
+                  <ConfigInput label="Fecha baja" type="date" value={persona.fechaBaja ?? ""} onChange={(value) => onPersona(persona.id, { fechaBaja: value })} />
+                  <ConfigInput label="Motivo baja" value={persona.motivoBaja ?? ""} onChange={(value) => onPersona(persona.id, { motivoBaja: value })} />
+                  <ConfigInput label="Observacion baja" value={persona.observacionBaja ?? ""} onChange={(value) => onPersona(persona.id, { observacionBaja: value })} />
+                </>
+              )}
               <ConfigInput label="Credito original" type="number" value={String(persona.creditoOriginal)} onChange={(value) => onPersona(persona.id, { creditoOriginal: Number(value || 0) })} />
               <ConfigInput label="Anillo" type="number" value={String(persona.anillo)} onChange={(value) => onPersona(persona.id, { anillo: Number(value || 0) })} />
               <ConfigInput label="Notas" value={persona.notas ?? ""} onChange={(value) => onPersona(persona.id, { notas: value })} />
@@ -1350,6 +1713,10 @@ function PersonaEditModal({
     nombre: persona.nombre,
     rut: persona.rut,
     whatsapp: persona.whatsapp ?? "",
+    estado: persona.estado,
+    fechaBaja: persona.fechaBaja ?? "",
+    motivoBaja: persona.motivoBaja ?? "",
+    observacionBaja: persona.observacionBaja ?? "",
     creditoOriginal: persona.creditoOriginal,
     anillo: persona.anillo,
     notas: persona.notas ?? "",
@@ -1372,6 +1739,10 @@ function PersonaEditModal({
       nombre: form.nombre.trim(),
       rut: formatRut(form.rut),
       whatsapp: formatWhatsapp(form.whatsapp),
+      estado: form.estado,
+      fechaBaja: form.estado === "de_baja" ? form.fechaBaja : "",
+      motivoBaja: form.estado === "de_baja" ? form.motivoBaja?.trim() : "",
+      observacionBaja: form.estado === "de_baja" ? form.observacionBaja?.trim() : "",
       notas: form.notas?.trim() || undefined,
     });
   };
@@ -1422,6 +1793,56 @@ function PersonaEditModal({
               placeholder="+56 9 1234 5678"
             />
           </ModalField>
+
+          <ModalField label="Estado" error={touched ? errors.estado : undefined}>
+            <select
+              value={form.estado}
+              onChange={(event) => {
+                const estado = event.target.value as EstadoPersona;
+                updateForm("estado", estado);
+                if (estado === "activa") {
+                  updateForm("fechaBaja", "");
+                  updateForm("motivoBaja", "");
+                  updateForm("observacionBaja", "");
+                }
+              }}
+              onBlur={() => setTouched(true)}
+            >
+              <option value="activa">Activa</option>
+              <option value="de_baja">De baja</option>
+            </select>
+          </ModalField>
+
+          {form.estado === "de_baja" && (
+            <>
+              <ModalField label="Fecha de baja" error={touched ? errors.fechaBaja : undefined}>
+                <input
+                  type="date"
+                  value={form.fechaBaja ?? ""}
+                  onChange={(event) => updateForm("fechaBaja", event.target.value)}
+                  onBlur={() => setTouched(true)}
+                />
+              </ModalField>
+
+              <ModalField label="Motivo de baja" error={touched ? errors.motivoBaja : undefined} hint="Obligatorio. Maximo 120 caracteres.">
+                <input
+                  value={form.motivoBaja ?? ""}
+                  onChange={(event) => updateForm("motivoBaja", event.target.value)}
+                  onBlur={() => setTouched(true)}
+                  placeholder="Ej: Renuncia al grupo, cambio de comuna"
+                />
+              </ModalField>
+
+              <ModalField label="Observacion de baja" error={touched ? errors.observacionBaja : undefined} hint="Opcional. Maximo 220 caracteres.">
+                <textarea
+                  value={form.observacionBaja ?? ""}
+                  onChange={(event) => updateForm("observacionBaja", event.target.value)}
+                  onBlur={() => setTouched(true)}
+                  rows={3}
+                />
+              </ModalField>
+            </>
+          )}
 
           <ModalField label="Credito original" error={touched ? errors.creditoOriginal : undefined}>
             <input

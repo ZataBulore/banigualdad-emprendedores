@@ -5,10 +5,12 @@ import type {
   CobroSemanal,
   ConfiguracionCes,
   Emprendedor,
+  EstadoAsistencia,
   EstadoPago,
   MetodoPago,
   PagoCes,
   Periodo,
+  Reunion,
   TesoreriaState,
 } from "../types/tesoreria";
 
@@ -18,6 +20,29 @@ const deriveEstadoPago = (montoPagado: number, totalEsperado: number, current: E
   if (current === "atrasado" || current === "revisar") return current;
   if (montoPagado <= 0) return "pendiente";
   return montoPagado >= totalEsperado ? "pagado" : "parcial";
+};
+
+const crearAsistenciasBase = (emprendedores: Emprendedor[]) =>
+  emprendedores.map((emprendedor) => ({
+    emprendedorId: emprendedor.id,
+    estado: "pendiente" as const,
+    observacion: "",
+  }));
+
+const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): Reunion => {
+  const existentes = new Map((reunion.asistencias ?? []).map((asistencia) => [asistencia.emprendedorId, asistencia]));
+
+  return {
+    ...reunion,
+    lugar: reunion.lugar ?? "",
+    observacion: reunion.observacion ?? "",
+    acta: reunion.acta ?? "",
+    asistencias: emprendedores.map((emprendedor) => ({
+      emprendedorId: emprendedor.id,
+      estado: existentes.get(emprendedor.id)?.estado ?? "pendiente",
+      observacion: existentes.get(emprendedor.id)?.observacion ?? "",
+    })),
+  };
 };
 
 const migrateState = (state: TesoreriaState): TesoreriaState => {
@@ -40,6 +65,10 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
     emprendedores: state.emprendedores.map((emprendedor) => ({
       ...emprendedor,
       whatsapp: emprendedor.whatsapp ?? "",
+      estado: emprendedor.estado ?? "activa",
+      fechaBaja: emprendedor.fechaBaja ?? "",
+      motivoBaja: emprendedor.motivoBaja ?? "",
+      observacionBaja: emprendedor.observacionBaja ?? "",
     })),
     cobros: state.cobros.map((cobro) => ({
       ...cobro,
@@ -52,6 +81,7 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
           referenciaPago: pago.referenciaPago ?? "",
         }))
       : crearPagosCes(state.emprendedores, configuracion),
+    reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
   };
 };
 
@@ -311,6 +341,60 @@ export const useTesoreria = () => {
     }));
   };
 
+  const crearReunion = (reunion: { titulo: string; fecha: string; lugar?: string; observacion?: string; acta?: string }) => {
+    const id = `reunion-${reunion.fecha}-${Date.now()}`;
+
+    setState((current) => ({
+      ...current,
+      reuniones: [
+        ...current.reuniones,
+        {
+          id,
+          titulo: reunion.titulo.trim() || `Reunion ${current.reuniones.length + 1}`,
+          fecha: reunion.fecha,
+          lugar: reunion.lugar?.trim() ?? "",
+          observacion: reunion.observacion?.trim() ?? "",
+          acta: reunion.acta?.trim() ?? "",
+          asistencias: crearAsistenciasBase(current.emprendedores),
+        },
+      ],
+      updatedAt: new Date().toISOString(),
+    }));
+
+    return id;
+  };
+
+  const updateReunion = (id: string, patch: Partial<Omit<Reunion, "id" | "asistencias">>) => {
+    setState((current) => ({
+      ...current,
+      reuniones: current.reuniones.map((reunion) =>
+        reunion.id === id ? { ...reunion, ...patch } : reunion,
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
+  const updateAsistencia = (
+    reunionId: string,
+    emprendedorId: string,
+    patch: { estado?: EstadoAsistencia; observacion?: string },
+  ) => {
+    setState((current) => ({
+      ...current,
+      reuniones: current.reuniones.map((reunion) => {
+        if (reunion.id !== reunionId) return reunion;
+
+        return {
+          ...reunion,
+          asistencias: reunion.asistencias.map((asistencia) =>
+            asistencia.emprendedorId === emprendedorId ? { ...asistencia, ...patch } : asistencia,
+          ),
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const resetear = () => setState(tesoreriaInicial);
 
   const importar = (nextState: TesoreriaState) => setState(migrateState(nextState));
@@ -337,6 +421,9 @@ export const useTesoreria = () => {
     actualizarDetalle,
     actualizarDetalleCes,
     registrarPagoMultiple,
+    crearReunion,
+    updateReunion,
+    updateAsistencia,
     importar,
     resetear,
   };

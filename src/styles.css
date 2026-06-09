@@ -87,6 +87,11 @@ button {
   --section-soft: #e8f2ff;
 }
 
+.section-asistencias {
+  --section-accent: #5e5ce6;
+  --section-soft: #efefff;
+}
+
 .section-respaldo {
   --section-accent: #7b61ff;
   --section-soft: #f0edff;
@@ -132,6 +137,11 @@ button {
 .detail-grid input,
 .detail-grid select,
 .reference-input input,
+.attendance-create input,
+.attendance-create textarea,
+.attendance-meeting-card input,
+.attendance-meeting-card textarea,
+.attendance-note input,
 .note-input textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -546,6 +556,8 @@ button {
 }
 
 .section-personas .person-panel,
+.section-asistencias .attendance-create,
+.section-asistencias .attendance-meeting-card,
 .section-config .config-section,
 .section-respaldo .backup-card {
   border-top: 3px solid var(--section-accent);
@@ -651,6 +663,26 @@ button {
 .badge.revisar {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.badge.presente {
+  background: #e9f9ee;
+  color: #248a3d;
+}
+
+.badge.ausente {
+  background: #ffecea;
+  color: #c9342b;
+}
+
+.badge.justificado {
+  background: var(--section-soft);
+  color: var(--section-accent);
+}
+
+.badge.pendiente {
+  background: #e5e5ea;
+  color: var(--muted);
 }
 
 .money-grid {
@@ -903,6 +935,49 @@ button {
   flex: 0 0 auto;
 }
 
+.person-status {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  border-radius: 999px;
+  background: #e9f9ee;
+  color: #248a3d;
+  padding: 0 9px;
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.person-status.de_baja {
+  border-color: rgba(255, 149, 0, 0.34);
+  background: #fff4df;
+  color: #9a5a00;
+}
+
+.inactive-panel {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 149, 0, 0.28);
+  border-radius: 8px;
+  background: #fff9ed;
+  padding: 10px;
+}
+
+.inactive-panel strong {
+  color: #7a4300;
+  font-size: 0.86rem;
+}
+
+.inactive-panel span,
+.inactive-panel p {
+  margin: 0;
+  color: #6d5541;
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
 .inline-alert {
   border-radius: 8px;
   background: #fff4df;
@@ -1014,6 +1089,200 @@ button {
   font-weight: 650;
 }
 
+.attendance-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.attendance-create,
+.attendance-meeting-card,
+.attendance-row {
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.attendance-create h2,
+.attendance-meeting-card h2 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 1.06rem;
+}
+
+.attendance-create-grid,
+.attendance-edit-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.attendance-create label,
+.attendance-edit-grid label,
+.attendance-note,
+.attendance-acta,
+.attendance-acta-create {
+  display: grid;
+  gap: 5px;
+}
+
+.attendance-create label span,
+.attendance-edit-grid label span,
+.attendance-note span,
+.attendance-acta span,
+.attendance-acta-create span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.attendance-create input,
+.attendance-meeting-card input,
+.attendance-note input {
+  min-height: 38px;
+  padding: 0 9px;
+  font-size: 0.84rem;
+}
+
+.attendance-create textarea,
+.attendance-meeting-card textarea {
+  min-height: 94px;
+  padding: 9px;
+  font-size: 0.84rem;
+  resize: vertical;
+}
+
+.attendance-acta {
+  margin-top: 10px;
+}
+
+.meeting-strip {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+}
+
+.meeting-pill {
+  flex: 0 0 170px;
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  text-align: left;
+}
+
+.meeting-pill.active {
+  border-color: var(--section-accent);
+  background: var(--section-soft);
+  color: var(--section-accent);
+}
+
+.meeting-pill strong,
+.meeting-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meeting-pill span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.attendance-meeting-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.attendance-meeting-title span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.attendance-meeting-title > strong {
+  border-radius: 999px;
+  background: var(--section-soft);
+  color: var(--section-accent);
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.attendance-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attendance-row {
+  display: grid;
+  gap: 9px;
+  border-top: 3px solid #c7c7cc;
+}
+
+.attendance-row.presente {
+  border-top-color: var(--success);
+}
+
+.attendance-row.ausente {
+  border-top-color: var(--danger);
+}
+
+.attendance-row.justificado {
+  border-top-color: var(--section-accent);
+}
+
+.attendance-row header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.attendance-row header strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.18;
+}
+
+.attendance-row header span:not(.badge) {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
+.attendance-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.attendance-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.attendance-actions button.active {
+  border-color: var(--section-accent);
+  background: var(--section-accent);
+  color: #ffffff;
+}
+
+.attendance-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .backup-panel {
   display: grid;
   gap: 10px;
@@ -1068,7 +1337,8 @@ button {
 }
 
 .config-field input,
-.config-field select {
+.config-field select,
+.config-field textarea {
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--line);
@@ -1078,6 +1348,12 @@ button {
   padding: 0 9px;
   font-size: 0.84rem;
   outline: none;
+}
+
+.config-field textarea {
+  min-height: 68px;
+  padding: 9px;
+  resize: vertical;
 }
 
 .config-note {
@@ -1515,7 +1791,7 @@ button {
     top: auto;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 5px;
     margin: 0;
     padding: 7px 10px max(7px, env(safe-area-inset-bottom));
@@ -1669,7 +1945,7 @@ button {
 
   .tabbar {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     overflow: visible;
   }
 
@@ -1712,12 +1988,29 @@ button {
     grid-template-columns: repeat(3, 1fr);
   }
 
+  .attendance-create-grid {
+    grid-template-columns: 1fr 160px 1fr auto;
+    align-items: end;
+  }
+
+  .attendance-acta-create {
+    grid-column: 1 / -2;
+  }
+
+  .attendance-edit-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .attendance-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .settings-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .person-config-card {
-    grid-template-columns: 1.2fr 0.75fr 0.9fr 0.75fr 0.45fr 1.1fr;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
   .modal-backdrop {
