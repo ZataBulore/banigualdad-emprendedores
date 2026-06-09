@@ -165,6 +165,12 @@ const matchesPersonaSearch = (
   );
 };
 
+const getSemanaCobroInicial = (periodos: Periodo[]) => {
+  const ordenados = [...periodos].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento));
+  const today = new Date().toISOString().slice(0, 10);
+  return ordenados.find((periodo) => periodo.fechaVencimiento >= today)?.id ?? ordenados[ordenados.length - 1]?.id ?? "";
+};
+
 const getFirstName = (nombre: string) => {
   const [lastNames, names = nombre] = nombre.split(",");
   return (names || lastNames).trim().split(" ")[0] || "Hola";
@@ -275,7 +281,7 @@ function App() {
     resetear,
   } = useTesoreria();
   const [tab, setTab] = useState<Tab>("cobros");
-  const [periodoId, setPeriodoId] = useState(state.periodos[0]?.id ?? "");
+  const [periodoId, setPeriodoId] = useState(() => getSemanaCobroInicial(state.periodos));
   const [reunionId, setReunionId] = useState(state.reuniones[0]?.id ?? "");
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>("todos");
   const [busqueda, setBusqueda] = useState("");
@@ -501,10 +507,10 @@ function App() {
           <p>{state.centro.nombreCentro} · {state.centro.zona}</p>
         </div>
         <div className="hero-actions">
-          <select value={periodo?.id} onChange={(event) => setPeriodoId(event.target.value)} aria-label="Seleccionar periodo">
+          <select value={periodo?.id} onChange={(event) => setPeriodoId(event.target.value)} aria-label="Seleccionar semana de cobro">
             {state.periodos.map((item) => (
               <option key={item.id} value={item.id}>
-                Cuota {item.numeroCuota} · {formatDate(item.fechaVencimiento)}
+                Semana cuota {item.numeroCuota} · {formatDate(item.fechaVencimiento)}
               </option>
             ))}
           </select>
@@ -563,7 +569,7 @@ function App() {
           <Users size={18} /> Personas
         </button>
         <button className={tab === "asistencias" ? "active" : ""} onClick={() => setTab("asistencias")}>
-          <CalendarCheck size={18} /> Asist.
+          <CalendarCheck size={18} /> Reuniones
         </button>
         <button className={tab === "respaldo" ? "active" : ""} onClick={() => setTab("respaldo")}>
           <Download size={18} /> Respaldo
@@ -871,7 +877,7 @@ function SectionBanner({
   const meta: Record<Tab, { title: string; detail: string; icon: React.ReactNode }> = {
     cobros: {
       title: "Cobros semanales",
-      detail: periodo ? `Cuota ${periodo.numeroCuota} · vence ${formatDate(periodo.fechaVencimiento)} · pendiente ${formatCurrency(totals.saldo)}` : "Periodo semanal",
+      detail: periodo ? `Semana cuota ${periodo.numeroCuota} · vence ${formatDate(periodo.fechaVencimiento)} · pendiente ${formatCurrency(totals.saldo)}` : "Semana de cobro",
       icon: <WalletCards size={20} />,
     },
     ces: {
@@ -885,7 +891,7 @@ function SectionBanner({
       icon: <Users size={20} />,
     },
     asistencias: {
-      title: "Asistencias",
+      title: "Reuniones",
       detail: "Reuniones, asistencia y actas del grupo",
       icon: <CalendarCheck size={20} />,
     },
@@ -1645,7 +1651,7 @@ function ConfigPanel({
         <section className="config-section">
           <header>
             <div>
-              <p className="eyebrow">Periodo seleccionado</p>
+              <p className="eyebrow">Semana seleccionada</p>
               <h2>Cuota {periodo.numeroCuota}</h2>
             </div>
           </header>
@@ -1655,7 +1661,7 @@ function ConfigPanel({
             <ConfigInput label="Ciclo" type="number" value={String(periodo.ciclo)} onChange={(value) => onPeriodo(periodo.id, { ciclo: Number(value || 0) })} />
             <ConfigInput label="Numero cuota" type="number" value={String(periodo.numeroCuota)} onChange={(value) => onPeriodo(periodo.id, { numeroCuota: Number(value || 0) })} />
             <ConfigInput label="Fecha firma" type="date" value={periodo.fechaFirma} onChange={(value) => onPeriodo(periodo.id, { fechaFirma: value })} />
-            <ConfigInput label="Vencimiento cuota" type="date" value={periodo.fechaVencimiento} onChange={(value) => onPeriodo(periodo.id, { fechaVencimiento: value })} />
+            <ConfigInput label="Vencimiento semana" type="date" value={periodo.fechaVencimiento} onChange={(value) => onPeriodo(periodo.id, { fechaVencimiento: value })} />
             <ConfigInput label="Cantidad emprendedores" type="number" value={String(periodo.cantidadEmprendedores)} onChange={(value) => onPeriodo(periodo.id, { cantidadEmprendedores: Number(value || 0) })} />
             <ConfigInput label="Total credito" type="number" value={String(periodo.totalCredito)} onChange={(value) => onPeriodo(periodo.id, { totalCredito: Number(value || 0) })} />
             <ConfigInput label="Total cuotas" type="number" value={String(periodo.totalCuotas)} onChange={(value) => onPeriodo(periodo.id, { totalCuotas: Number(value || 0) })} />

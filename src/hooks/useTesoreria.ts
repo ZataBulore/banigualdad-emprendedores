@@ -46,6 +46,10 @@ const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): 
 };
 
 const migrateState = (state: TesoreriaState): TesoreriaState => {
+  const periodosActuales = new Map((state.periodos ?? []).map((periodo) => [periodo.id, periodo]));
+  const cobrosActuales = new Map((state.cobros ?? []).map((cobro) => [cobro.id, cobro]));
+  const periodosIniciales = new Set(tesoreriaInicial.periodos.map((periodo) => periodo.id));
+  const cobrosIniciales = new Set(tesoreriaInicial.cobros.map((cobro) => cobro.id));
   const configuracion = {
     ...configuracionInicial,
     ...(state.configuracion ?? {}),
@@ -62,6 +66,13 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
   return {
     ...state,
     configuracion,
+    periodos: [
+      ...tesoreriaInicial.periodos.map((periodo) => ({
+        ...periodo,
+        ...(periodosActuales.get(periodo.id) ?? {}),
+      })),
+      ...(state.periodos ?? []).filter((periodo) => !periodosIniciales.has(periodo.id)),
+    ].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento)),
     emprendedores: state.emprendedores.map((emprendedor) => ({
       ...emprendedor,
       whatsapp: emprendedor.whatsapp ?? "",
@@ -70,7 +81,13 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       motivoBaja: emprendedor.motivoBaja ?? "",
       observacionBaja: emprendedor.observacionBaja ?? "",
     })),
-    cobros: state.cobros.map((cobro) => ({
+    cobros: [
+      ...tesoreriaInicial.cobros.map((cobro) => ({
+        ...cobro,
+        ...(cobrosActuales.get(cobro.id) ?? {}),
+      })),
+      ...(state.cobros ?? []).filter((cobro) => !cobrosIniciales.has(cobro.id)),
+    ].map((cobro) => ({
       ...cobro,
       referenciaPago: cobro.referenciaPago ?? "",
     })),
