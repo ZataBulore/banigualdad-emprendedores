@@ -367,6 +367,38 @@ button {
   outline: 0;
 }
 
+.search-clear {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: #e5e5ea;
+  color: var(--muted);
+  padding: 0;
+}
+
+.search-clear:active {
+  background: #d1d1d6;
+}
+
+.people-search {
+  margin-bottom: 10px;
+}
+
+.empty-state {
+  margin: 0;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 12px;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
 .chips {
   display: flex;
   gap: 6px;

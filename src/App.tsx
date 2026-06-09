@@ -99,6 +99,47 @@ const isValidWhatsapp = (value = "") => {
   return !normalized || /^569\d{8}$/.test(normalized);
 };
 
+const normalizeSearchText = (value = "") =>
+  value
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+const matchesPersonaSearch = (
+  persona: Emprendedor | undefined,
+  query: string,
+  extraValues: Array<string | number | undefined> = [],
+) => {
+  const normalizedQuery = normalizeSearchText(query);
+  const compactQuery = cleanRut(query);
+  const numericQuery = cleanWhatsapp(query);
+
+  if (!normalizedQuery && !compactQuery && !numericQuery) return true;
+  if (!persona) return false;
+
+  const values = [
+    persona.nombre,
+    persona.rut,
+    persona.whatsapp,
+    persona.creditoOriginal,
+    persona.anillo,
+    persona.notas,
+    ...extraValues,
+  ];
+
+  const normalizedHaystack = values.map((value) => normalizeSearchText(String(value ?? ""))).join(" ");
+  const compactHaystack = values.map((value) => cleanRut(String(value ?? ""))).join(" ");
+  const numericHaystack = values.map((value) => cleanWhatsapp(String(value ?? ""))).join(" ");
+
+  return (
+    normalizedHaystack.includes(normalizedQuery) ||
+    (!!compactQuery && compactHaystack.includes(compactQuery)) ||
+    (!!numericQuery && numericHaystack.includes(numericQuery))
+  );
+};
+
 const getFirstName = (nombre: string) => {
   const [lastNames, names = nombre] = nombre.split(",");
   return (names || lastNames).trim().split(" ")[0] || "Hola";
@@ -199,40 +240,55 @@ function App() {
   const cesTotals = getPeriodoTotals(state.pagosCes);
 
   const cobrosFiltrados = useMemo(() => {
-    const normalizedSearch = busqueda.trim().toLowerCase();
-
     return cobrosPeriodo.filter((cobro) => {
       const persona = personasPorId.get(cobro.emprendedorId);
       const matchesEstado = filtroEstado === "todos" || cobro.estadoPago === filtroEstado;
-      const matchesSearch =
-        !normalizedSearch ||
-        persona?.nombre.toLowerCase().includes(normalizedSearch) ||
-        persona?.rut.toLowerCase().includes(normalizedSearch) ||
-        persona?.whatsapp?.toLowerCase().includes(normalizedSearch);
+      const matchesSearch = matchesPersonaSearch(persona, busqueda, [
+        cobro.cuota,
+        cobro.seguro,
+        cobro.totalEsperado,
+        cobro.montoPagado,
+        cobro.estadoPago,
+        cobro.fechaPago,
+        cobro.metodoPago,
+        cobro.observacion,
+      ]);
 
       return matchesEstado && matchesSearch;
     });
   }, [busqueda, cobrosPeriodo, filtroEstado, personasPorId]);
 
   const pagosCesFiltrados = useMemo(() => {
-    const normalizedSearch = busqueda.trim().toLowerCase();
-
     return state.pagosCes.filter((pago) => {
       const persona = personasPorId.get(pago.emprendedorId);
       const matchesEstado = filtroEstado === "todos" || pago.estadoPago === filtroEstado;
-      const matchesSearch =
-        !normalizedSearch ||
-        persona?.nombre.toLowerCase().includes(normalizedSearch) ||
-        persona?.rut.toLowerCase().includes(normalizedSearch) ||
-        persona?.whatsapp?.toLowerCase().includes(normalizedSearch);
+      const matchesSearch = matchesPersonaSearch(persona, busqueda, [
+        pago.creditoBase,
+        pago.fechaVencimiento,
+        pago.totalEsperado,
+        pago.montoPagado,
+        pago.estadoPago,
+        pago.fechaPago,
+        pago.metodoPago,
+        pago.observacion,
+      ]);
 
       return matchesEstado && matchesSearch;
     });
   }, [busqueda, filtroEstado, personasPorId, state.pagosCes]);
 
+  const emprendedoresFiltrados = useMemo(
+    () => state.emprendedores.filter((persona) => matchesPersonaSearch(persona, busqueda)),
+    [busqueda, state.emprendedores],
+  );
+
   const personaSeleccionada = personaActiva
     ? state.emprendedores.find((persona) => persona.id === personaActiva)
     : null;
+  const personaVisible =
+    personaSeleccionada && emprendedoresFiltrados.some((persona) => persona.id === personaSeleccionada.id)
+      ? personaSeleccionada
+      : emprendedoresFiltrados[0];
 
   const exportarJson = () => {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -393,14 +449,11 @@ function App() {
       {tab === "cobros" && (
         <section className="workspace">
           <div className="toolbar">
-            <label className="search-box">
-              <Search size={18} />
-              <input
-                value={busqueda}
-                onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar nombre, RUT o WhatsApp"
-              />
-            </label>
+            <SearchInput
+              value={busqueda}
+              onChange={setBusqueda}
+              placeholder="Buscar nombre, RUT o WhatsApp"
+            />
             <div className="chips" role="list" aria-label="Filtrar por estado">
               {estadoOptions.map((estado) => (
                 <button
@@ -469,14 +522,11 @@ function App() {
           </section>
 
           <div className="toolbar">
-            <label className="search-box">
-              <Search size={18} />
-              <input
-                value={busqueda}
-                onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar nombre, RUT o WhatsApp"
-              />
-            </label>
+            <SearchInput
+              value={busqueda}
+              onChange={setBusqueda}
+              placeholder="Buscar nombre, RUT o WhatsApp"
+            />
             <div className="chips" role="list" aria-label="Filtrar por estado CES">
               {estadoOptions.map((estado) => (
                 <button
@@ -523,20 +573,29 @@ function App() {
       )}
 
       {tab === "personas" && (
-        <section className="workspace people-layout">
-          <aside className="people-list">
-            {state.emprendedores.map((persona) => (
-              <button
-                key={persona.id}
-                className={personaActiva === persona.id ? "person-row active" : "person-row"}
-                onClick={() => setPersonaActiva(persona.id)}
-              >
-                <span>{persona.nombre}</span>
-                <small>{persona.rut}</small>
-              </button>
-            ))}
-          </aside>
-          <PersonaPanel persona={personaSeleccionada ?? state.emprendedores[0]} state={state} />
+        <section className="workspace">
+          <SearchInput
+            className="people-search"
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar cualquier dato de la persona"
+          />
+          <div className="people-layout">
+            <aside className="people-list">
+              {emprendedoresFiltrados.map((persona) => (
+                <button
+                  key={persona.id}
+                  className={personaVisible?.id === persona.id ? "person-row active" : "person-row"}
+                  onClick={() => setPersonaActiva(persona.id)}
+                >
+                  <span>{persona.nombre}</span>
+                  <small>{persona.rut}</small>
+                </button>
+              ))}
+              {!emprendedoresFiltrados.length && <p className="empty-state">No hay personas para esta busqueda.</p>}
+            </aside>
+            <PersonaPanel persona={personaVisible} state={state} />
+          </div>
         </section>
       )}
 
@@ -586,6 +645,9 @@ function App() {
           onPersona={updateEmprendedor}
           onCes={updateConfiguracionCes}
           onRecalcularCes={recalcularPagosCes}
+          busqueda={busqueda}
+          onBusqueda={setBusqueda}
+          personasFiltradas={emprendedoresFiltrados}
         />
       )}
 
@@ -614,6 +676,30 @@ function SummaryCard({ icon, label, value, tone = "default" }: { icon: React.Rea
         <strong>{value}</strong>
       </div>
     </article>
+  );
+}
+
+function SearchInput({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  className?: string;
+}) {
+  return (
+    <label className={`search-box ${className}`.trim()}>
+      <Search size={18} />
+      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+      {value && (
+        <button type="button" className="search-clear" onClick={() => onChange("")} aria-label="Limpiar busqueda">
+          <X size={16} />
+        </button>
+      )}
+    </label>
   );
 }
 
@@ -954,6 +1040,9 @@ function ConfigPanel({
   onPersona,
   onCes,
   onRecalcularCes,
+  busqueda,
+  onBusqueda,
+  personasFiltradas,
 }: {
   state: TesoreriaState;
   periodo?: Periodo;
@@ -962,6 +1051,9 @@ function ConfigPanel({
   onPersona: (id: string, patch: Partial<Emprendedor>) => void;
   onCes: (patch: Partial<ConfiguracionCes>) => void;
   onRecalcularCes: () => void;
+  busqueda: string;
+  onBusqueda: (value: string) => void;
+  personasFiltradas: Emprendedor[];
 }) {
   const cesRules = state.configuracion.ces.montosPorCredito;
 
@@ -1058,8 +1150,14 @@ function ConfigPanel({
             <h2>Datos base y creditos</h2>
           </div>
         </header>
+        <SearchInput
+          className="people-search"
+          value={busqueda}
+          onChange={onBusqueda}
+          placeholder="Buscar nombre, RUT, WhatsApp, credito o nota"
+        />
         <div className="people-config-list">
-          {state.emprendedores.map((persona) => (
+          {personasFiltradas.map((persona) => (
             <article className="person-config-card" key={persona.id}>
               <ConfigInput label="Nombre" value={persona.nombre} onChange={(value) => onPersona(persona.id, { nombre: value })} />
               <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
@@ -1069,6 +1167,7 @@ function ConfigPanel({
               <ConfigInput label="Notas" value={persona.notas ?? ""} onChange={(value) => onPersona(persona.id, { notas: value })} />
             </article>
           ))}
+          {!personasFiltradas.length && <p className="empty-state">No hay personas para esta busqueda.</p>}
         </div>
       </section>
     </section>
