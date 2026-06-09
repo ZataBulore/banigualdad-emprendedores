@@ -102,7 +102,7 @@ const personaEstadoLabels: Record<EstadoPersona, string> = {
   de_baja: "De baja",
 };
 
-const INTERES_PERSONA_LABEL = "Monto de interes";
+const ANILLO_PERSONA_LABEL = "Anillo";
 
 const confirmarAccionCritica = (mensaje: string) => window.confirm(mensaje);
 
@@ -340,7 +340,7 @@ const validatePersonaForm = (
   }
 
   if (!Number.isFinite(form.anillo) || form.anillo < 0) {
-    errors.anillo = "El monto de interes debe ser igual o mayor a cero.";
+    errors.anillo = "El anillo debe ser igual o mayor a cero.";
   }
 
   if ((form.notas ?? "").length > 200) {
@@ -2149,7 +2149,7 @@ function ConfigPanel({
               )}
               <ConfigInput label="Credito original" type="number" value={String(persona.creditoOriginal)} onChange={(value) => onPersona(persona.id, { creditoOriginal: Number(value || 0) })} />
               <ConfigInput
-                label={INTERES_PERSONA_LABEL}
+                label={ANILLO_PERSONA_LABEL}
                 type="number"
                 min="0"
                 step="1"
@@ -2539,7 +2539,7 @@ function PersonaEditModal({
             />
           </ModalField>
 
-          <ModalField label={INTERES_PERSONA_LABEL} error={touched ? errors.anillo : undefined}>
+          <ModalField label={ANILLO_PERSONA_LABEL} error={touched ? errors.anillo : undefined}>
             <input
               type="number"
               min="0"
