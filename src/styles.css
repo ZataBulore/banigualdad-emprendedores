@@ -426,6 +426,47 @@ button {
   margin-bottom: 10px;
 }
 
+.week-strip {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+}
+
+.week-pill {
+  flex: 0 0 118px;
+  display: grid;
+  gap: 2px;
+  min-height: 48px;
+  border-color: var(--line-soft);
+  background: var(--surface);
+  text-align: left;
+}
+
+.week-pill.active {
+  border-color: var(--section-accent);
+  background: var(--section-soft);
+  color: var(--section-accent);
+}
+
+.week-pill strong,
+.week-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.week-pill strong {
+  font-size: 0.78rem;
+}
+
+.week-pill span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
 .toolbar-side {
   display: grid;
   gap: 8px;

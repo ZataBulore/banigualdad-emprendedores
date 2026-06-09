@@ -583,6 +583,19 @@ function App() {
 
       {tab === "cobros" && (
         <section className="workspace">
+          <div className="week-strip" role="list" aria-label="Semanas de cobro">
+            {state.periodos.map((item) => (
+              <button
+                key={item.id}
+                className={item.id === periodo?.id ? "week-pill active" : "week-pill"}
+                onClick={() => setPeriodoId(item.id)}
+              >
+                <strong>Cuota {item.numeroCuota}</strong>
+                <span>{formatDate(item.fechaVencimiento)}</span>
+              </button>
+            ))}
+          </div>
+
           <div className="toolbar">
             <SearchInput
               value={busqueda}
