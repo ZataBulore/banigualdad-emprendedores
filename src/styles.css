@@ -74,8 +74,10 @@ button {
 
 .login-shell {
   display: grid;
+  grid-template-rows: 1fr auto;
   min-height: 100dvh;
-  place-items: center;
+  align-items: center;
+  justify-items: center;
   background:
     linear-gradient(180deg, rgba(28, 28, 30, 0.12), rgba(28, 28, 30, 0.46)),
     url("../assets/login-negrete-campo.jpg") center / cover no-repeat,
@@ -92,6 +94,17 @@ button {
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   padding: 22px;
+}
+
+.login-footer {
+  width: min(420px, 100%);
+  padding-top: 14px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.42);
 }
 
 .login-brand {

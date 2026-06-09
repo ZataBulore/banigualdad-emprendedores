@@ -68,6 +68,7 @@ const EMAIL_ADMIN_PASSWORD_HASH =
   DEFAULT_EMAIL_ADMIN_PASSWORD_HASH;
 const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
+const APP_VERSION = "1.0.0";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -1108,7 +1109,7 @@ function LoginGate({
           </div>
         </div>
         <p className="eyebrow">Acceso privado</p>
-        <h1>Acceso del grupo</h1>
+        <h1>Acceso Administración</h1>
         <p className="login-copy">
           Gestiona cobros, asistencia y acuerdos del centro con una cuenta Google autorizada.
         </p>
@@ -1135,6 +1136,9 @@ function LoginGate({
           </span>
         </div>
       </section>
+      <footer className="login-footer">
+        Version {APP_VERSION} - Desarrollador organizacional Zata Studio Lab
+      </footer>
     </main>
   );
 }
