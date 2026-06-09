@@ -5,6 +5,8 @@ import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  Cloud,
+  CloudOff,
   Download,
   FileImage,
   History,
@@ -30,6 +32,7 @@ import {
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
+import { isFirebaseConfigured, signInFirebaseWithGoogleCredential, signOutFirebase } from "./services/firebase";
 import type { Centro, CobroSemanal, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
@@ -84,6 +87,14 @@ const asistenciaLabels: Record<EstadoAsistencia, string> = {
 };
 
 const asistenciaOptions: EstadoAsistencia[] = ["presente", "ausente", "justificado", "pendiente"];
+
+const cloudStatusLabels = {
+  local: "Modo local",
+  connecting: "Conectando nube",
+  synced: "Firebase activo",
+  saving: "Guardando nube",
+  error: "Error nube",
+} as const;
 
 const personaEstadoLabels: Record<EstadoPersona, string> = {
   activa: "Activa",
@@ -359,8 +370,12 @@ const validatePersonaForm = (
 };
 
 function App() {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
+  const [authError, setAuthError] = useState("");
   const {
     state,
+    cloudStatus,
+    cloudError,
     personasPorId,
     updateCentro,
     updatePeriodo,
@@ -384,7 +399,7 @@ function App() {
     marcarTodosPresentes,
     importar,
     resetear,
-  } = useTesoreria();
+  } = useTesoreria({ syncEnabled: Boolean(authUser), updatedBy: authUser?.email });
   const [tab, setTab] = useState<Tab>("cobros");
   const [periodoId, setPeriodoId] = useState(() => getSemanaCobroInicial(state.periodos));
   const [reunionId, setReunionId] = useState(state.reuniones[0]?.id ?? "");
@@ -393,8 +408,6 @@ function App() {
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
   const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
-  const [authError, setAuthError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const correosAutorizados = useMemo(
@@ -405,7 +418,7 @@ function App() {
     [state.configuracion.seguridad.correosAutorizados],
   );
 
-  const handleGoogleLogin = (user: AuthUser) => {
+  const handleGoogleLogin = async (user: AuthUser, credential: string) => {
     const email = user.email.toLowerCase();
     const isAllowed = !correosAutorizados.length || correosAutorizados.includes(email);
 
@@ -415,6 +428,16 @@ function App() {
       setAuthUser(null);
       setAuthError(`La cuenta ${email} no esta autorizada para ver este sistema.`);
       return;
+    }
+
+    if (isFirebaseConfigured) {
+      try {
+        await signInFirebaseWithGoogleCredential(credential);
+      } catch {
+        setAuthUser(null);
+        setAuthError("Google inicio sesion, pero Firebase no autorizo la conexion. Revisa Firebase Auth y los dominios autorizados.");
+        return;
+      }
     }
 
     const sessionUser: AuthUser = { ...user, authSource: "google", sessionVersion: AUTH_SESSION_VERSION };
@@ -429,6 +452,7 @@ function App() {
     if (!confirmed) return;
     window.sessionStorage.removeItem(AUTH_SESSION_KEY);
     window.localStorage.removeItem(AUTH_SESSION_KEY);
+    void signOutFirebase();
     setAuthUser(null);
   };
 
@@ -675,6 +699,10 @@ function App() {
           <p>{state.centro.nombreCentro} · {state.centro.zona}</p>
         </div>
         <div className="hero-actions">
+          <div className={`cloud-status ${cloudStatus}`} title={cloudError || cloudStatusLabels[cloudStatus]}>
+            {cloudStatus === "local" || cloudStatus === "error" ? <CloudOff size={15} /> : <Cloud size={15} />}
+            <span>{cloudStatusLabels[cloudStatus]}</span>
+          </div>
           <div className="auth-session">
             <span className="auth-avatar">
               {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
@@ -1020,7 +1048,7 @@ function LoginGate({
   clientId: string;
   allowedEmails: string[];
   error: string;
-  onLogin: (user: AuthUser) => void;
+  onLogin: (user: AuthUser, credential: string) => Promise<void> | void;
 }) {
   const buttonRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -1056,7 +1084,7 @@ function LoginGate({
         }
 
         try {
-          onLogin(decodeGoogleCredential(response.credential));
+          void onLogin(decodeGoogleCredential(response.credential), response.credential);
         } catch {
           setInternalError("No se pudo leer la cuenta de Google. Intentalo nuevamente.");
         }
@@ -1082,6 +1110,20 @@ function LoginGate({
           <div>
             <span>Negrete</span>
             <strong>Semilla Emprende</strong>
+          </div>
+        </div>
+        <div className="login-negrete-scene" aria-hidden="true">
+          <div>
+            <span>Feria local</span>
+            <strong>Emprendedores</strong>
+          </div>
+          <div>
+            <span>Negrete</span>
+            <strong>Capital y reuniones</strong>
+          </div>
+          <div>
+            <span>Banigualdad</span>
+            <strong>Grupo activo</strong>
           </div>
         </div>
         <p className="eyebrow">Acceso privado</p>

@@ -127,6 +127,49 @@ button {
   line-height: 1.05;
 }
 
+.login-negrete-scene {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(52, 199, 89, 0.2);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(233, 249, 238, 0.95), rgba(255, 255, 255, 0.9)),
+    var(--surface);
+  padding: 10px;
+}
+
+.login-negrete-scene div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 8px 9px;
+}
+
+.login-negrete-scene span,
+.login-negrete-scene strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-negrete-scene span {
+  color: #248a3d;
+  font-size: 0.7rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.login-negrete-scene strong {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .login-card h1 {
   margin: 4px 0 8px;
   color: var(--text);
@@ -258,6 +301,43 @@ button {
 .auth-session button:hover {
   background: #ffecea;
   color: var(--danger);
+}
+
+.cloud-status {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 10px;
+  box-shadow: var(--shadow);
+  font-size: 0.7rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.cloud-status.synced {
+  border-color: rgba(52, 199, 89, 0.28);
+  background: #e9f9ee;
+  color: #248a3d;
+}
+
+.cloud-status.saving,
+.cloud-status.connecting {
+  border-color: rgba(255, 149, 0, 0.28);
+  background: #fff7e8;
+  color: #8a5200;
+}
+
+.cloud-status.error,
+.cloud-status.local {
+  border-color: rgba(255, 59, 48, 0.18);
+  background: #fff1ef;
+  color: #c9342b;
 }
 
 .section-cobros {
@@ -2108,6 +2188,10 @@ button {
     width: 100%;
   }
 
+  .cloud-status {
+    width: 100%;
+  }
+
   .auth-user {
     flex: 1;
     text-align: left;
@@ -2430,6 +2514,11 @@ button {
 
   .auth-session {
     max-width: 320px;
+  }
+
+  .cloud-status {
+    max-width: 320px;
+    justify-self: end;
   }
 
   .hero-copy h1 {

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { configuracionInicial, crearPagosCes, getMontoCes, tesoreriaInicial } from "../data/tesoreriaInicial";
+import { isFirebaseConfigured, readRemoteState, saveRemoteState, subscribeRemoteState } from "../services/firebase";
 import type {
   Centro,
   CobroSemanal,
@@ -16,6 +17,8 @@ import type {
 } from "../types/tesoreria";
 
 const STORAGE_KEY = "tesoreria-semilla-emprende-v1";
+
+export type CloudSyncStatus = "local" | "connecting" | "synced" | "saving" | "error";
 
 const deriveEstadoPago = (montoPagado: number, totalEsperado: number, current: EstadoPago) => {
   if (current === "atrasado" || current === "revisar") return current;
@@ -142,8 +145,15 @@ const loadState = (): TesoreriaState => {
   }
 };
 
-export const useTesoreria = () => {
+export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: string } = {}) => {
   const [state, setState] = useState<TesoreriaState>(loadState);
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(
+    isFirebaseConfigured ? "connecting" : "local",
+  );
+  const [cloudError, setCloudError] = useState("");
+  const applyingRemoteRef = useRef(false);
+  const remoteReadyRef = useRef(false);
+  const saveTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -151,6 +161,90 @@ export const useTesoreria = () => {
       JSON.stringify({ ...state, updatedAt: new Date().toISOString() }),
     );
   }, [state]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) {
+      setCloudStatus("local");
+      return;
+    }
+
+    if (!options.syncEnabled) {
+      setCloudStatus("connecting");
+      return;
+    }
+
+    let cancelled = false;
+    setCloudStatus("connecting");
+    setCloudError("");
+
+    readRemoteState()
+      .then((remoteState) => {
+        if (cancelled) return;
+        if (remoteState) {
+          applyingRemoteRef.current = true;
+          setState(migrateState(remoteState));
+        } else {
+          void saveRemoteState(state, options.updatedBy);
+        }
+        remoteReadyRef.current = true;
+        setCloudStatus("synced");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCloudStatus("error");
+        setCloudError(error instanceof Error ? error.message : "No se pudo conectar con Firebase.");
+      });
+
+    const unsubscribe = subscribeRemoteState(
+      (remoteState) => {
+        if (!remoteReadyRef.current || !remoteState) return;
+        applyingRemoteRef.current = true;
+        setState(migrateState(remoteState));
+        setCloudStatus("synced");
+      },
+      (message) => {
+        setCloudStatus("error");
+        setCloudError(message);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [options.syncEnabled, options.updatedBy]);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || !options.syncEnabled || !remoteReadyRef.current) return;
+
+    if (applyingRemoteRef.current) {
+      applyingRemoteRef.current = false;
+      return;
+    }
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+
+    setCloudStatus("saving");
+    saveTimeoutRef.current = window.setTimeout(() => {
+      saveRemoteState(state, options.updatedBy)
+        .then(() => {
+          setCloudStatus("synced");
+          setCloudError("");
+        })
+        .catch((error) => {
+          setCloudStatus("error");
+          setCloudError(error instanceof Error ? error.message : "No se pudo guardar en Firebase.");
+        });
+    }, 450);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [options.syncEnabled, options.updatedBy, state]);
 
   const updateCobro = (id: string, patch: Partial<CobroSemanal>) => {
     setState((current) => ({
@@ -501,6 +595,8 @@ export const useTesoreria = () => {
 
   return {
     state,
+    cloudStatus,
+    cloudError,
     personasPorId,
     updateCentro,
     updatePeriodo,
