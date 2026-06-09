@@ -124,8 +124,8 @@ const crearCobrosSemanales = () =>
 export const tesoreriaInicial: TesoreriaState = {
   centro: {
     idCentro: "22808",
-    nombreCentro: "Centro Semilla Emprende Negrete",
-    zona: "Los_Angeles",
+    nombreCentro: "Centro Semilla Emprende",
+    zona: "Los Angeles",
     asesor: "Munoz Navarrete, Millaray Javiera",
   },
   configuracion: configuracionInicial,
