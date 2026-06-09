@@ -1584,18 +1584,30 @@ function PagoMultipleModal({
             </select>
           </ModalField>
 
-          <ModalField
-            label="Referencia compartida"
-            error={touched && requiresReference && !referenciaPago.trim() ? "Ingresa el numero o descripcion del comprobante." : undefined}
-            hint={metodoPago === "efectivo" ? "Para efectivo no necesitas numero de transferencia." : "Se copiara en cada cuota seleccionada."}
-          >
-            <input
-              value={referenciaPago}
-              onChange={(event) => setReferenciaPago(event.target.value)}
-              placeholder={metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: transferencia 348921"}
-              disabled={metodoPago === "efectivo"}
-            />
-          </ModalField>
+          <section className={touched && requiresReference && !referenciaPago.trim() ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
+            <div className="receipt-heading">
+              <span><ReceiptText size={15} /> Comprobante</span>
+              <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
+                <Check size={15} /> Efectivo
+              </button>
+            </div>
+            <label className="reference-input">
+              <span>Referencia compartida</span>
+              <input
+                value={referenciaPago}
+                onChange={(event) => setReferenciaPago(event.target.value)}
+                placeholder={metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: transferencia 348921"}
+                disabled={metodoPago === "efectivo"}
+              />
+              <small>
+                {touched && requiresReference && !referenciaPago.trim()
+                  ? "Ingresa el numero o descripcion del comprobante."
+                  : metodoPago === "efectivo"
+                    ? "Para efectivo no necesitas numero de transferencia."
+                    : "Se copiara en cada cuota seleccionada."}
+              </small>
+            </label>
+          </section>
         </div>
 
         <section className="multi-pay-list" aria-label="Cuotas disponibles">

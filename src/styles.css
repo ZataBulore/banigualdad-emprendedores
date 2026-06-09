@@ -131,6 +131,7 @@ button {
 .amount-input input,
 .detail-grid input,
 .detail-grid select,
+.reference-input input,
 .note-input textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -782,11 +783,26 @@ button {
   display: block;
 }
 
+.reference-input span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
 .reference-input input {
   min-height: 38px;
   margin-top: 5px;
   padding: 0 9px;
   font-size: 0.84rem;
+}
+
+.reference-input small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .reference-input input:disabled {
@@ -1243,6 +1259,23 @@ button {
 
 .modal-field.invalid small,
 .modal-error {
+  color: #c9342b;
+}
+
+.modal-receipt {
+  margin-top: 0;
+}
+
+.modal-receipt.invalid {
+  border-color: var(--danger);
+  background: #fff8f7;
+}
+
+.modal-receipt.invalid .reference-input input {
+  border-color: var(--danger);
+}
+
+.modal-receipt.invalid .reference-input small {
   color: #c9342b;
 }
 
