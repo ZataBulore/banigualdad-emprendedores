@@ -420,6 +420,24 @@ export const useTesoreria = () => {
     }));
   };
 
+  const marcarTodosPresentes = (reunionId: string) => {
+    setState((current) => ({
+      ...current,
+      reuniones: current.reuniones.map((reunion) => {
+        if (reunion.id !== reunionId) return reunion;
+
+        return {
+          ...reunion,
+          asistencias: reunion.asistencias.map((asistencia) => ({
+            ...asistencia,
+            estado: "presente",
+          })),
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const resetear = () => setState(tesoreriaInicial);
 
   const importar = (nextState: TesoreriaState) => setState(migrateState(nextState));
@@ -450,6 +468,7 @@ export const useTesoreria = () => {
     updateReunion,
     eliminarReunion,
     updateAsistencia,
+    marcarTodosPresentes,
     importar,
     resetear,
   };

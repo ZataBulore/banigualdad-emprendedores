@@ -277,6 +277,7 @@ function App() {
     updateReunion,
     eliminarReunion,
     updateAsistencia,
+    marcarTodosPresentes,
     importar,
     resetear,
   } = useTesoreria();
@@ -780,6 +781,7 @@ function App() {
           busqueda={busqueda}
           onBusqueda={setBusqueda}
           onAsistencia={updateAsistencia}
+          onTodosPresentes={marcarTodosPresentes}
         />
       )}
 
@@ -1385,6 +1387,7 @@ function AsistenciasPanel({
   busqueda,
   onBusqueda,
   onAsistencia,
+  onTodosPresentes,
 }: {
   reuniones: Reunion[];
   personasPorId: Map<string, Emprendedor>;
@@ -1400,6 +1403,7 @@ function AsistenciasPanel({
   busqueda: string;
   onBusqueda: (value: string) => void;
   onAsistencia: (reunionId: string, emprendedorId: string, patch: { estado?: EstadoAsistencia; observacion?: string }) => void;
+  onTodosPresentes: (reunionId: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [titulo, setTitulo] = useState("");
@@ -1425,6 +1429,13 @@ function AsistenciasPanel({
     const confirmed = confirmarAccionCritica(`Eliminar "${reunionActiva.titulo}"? Se borraran su asistencia y acta.`);
     if (!confirmed) return;
     onEliminarReunion(reunionActiva.id);
+  };
+
+  const marcarTodos = () => {
+    if (!reunionActiva) return;
+    const confirmed = confirmarAccionCritica(`Marcar a todos como presentes en "${reunionActiva.titulo}"?`);
+    if (!confirmed) return;
+    onTodosPresentes(reunionActiva.id);
   };
 
   return (
@@ -1515,6 +1526,9 @@ function AsistenciasPanel({
                     rows={5}
                   />
                 </label>
+                <button className="mark-all-present-button" onClick={marcarTodos}>
+                  <CheckCircle2 size={17} /> Todos presentes
+                </button>
               </section>
 
               <section className="summary-grid compact attendance-summary">

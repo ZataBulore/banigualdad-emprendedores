@@ -1270,6 +1270,22 @@ button {
   color: #c9342b;
 }
 
+.mark-all-present-button {
+  display: inline-flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 10px;
+  border: 1px solid rgba(52, 199, 89, 0.3);
+  border-radius: 8px;
+  background: #e9f9ee;
+  color: #248a3d;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .attendance-list {
   display: grid;
   gap: 8px;
