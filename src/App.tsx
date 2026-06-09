@@ -41,6 +41,7 @@ type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
+type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
 
@@ -391,8 +392,8 @@ function App() {
     marcarCesPagado,
     cambiarEstadoCes,
     registrarMonto,
-    registrarSeguro,
     registrarMontoCes,
+    actualizarCobro,
     actualizarDetalle,
     actualizarDetalleCes,
     registrarPagoMultiple,
@@ -411,6 +412,7 @@ function App() {
   const [busqueda, setBusqueda] = useState("");
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
   const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
+  const [cobroEditandoId, setCobroEditandoId] = useState<string | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -473,6 +475,11 @@ function App() {
 
   const periodo = state.periodos.find((item) => item.id === periodoId) ?? state.periodos[0];
   const reunionActiva = state.reuniones.find((item) => item.id === reunionId) ?? state.reuniones[0];
+  const cobroEditando = state.cobros.find((cobro) => cobro.id === cobroEditandoId) ?? null;
+  const periodoCobroEditando = cobroEditando
+    ? state.periodos.find((item) => item.id === cobroEditando.periodoId)
+    : undefined;
+  const personaCobroEditando = cobroEditando ? personasPorId.get(cobroEditando.emprendedorId) : undefined;
   const cobrosPeriodo = state.cobros.filter((cobro) => cobro.periodoId === periodo?.id);
   const totals = getPeriodoTotals(cobrosPeriodo);
   const cesTotals = getPeriodoTotals(state.pagosCes);
@@ -842,9 +849,8 @@ function App() {
                   onPagar={() => marcarPagado(cobro.id)}
                   onEstado={(estado) => cambiarEstado(cobro.id, estado)}
                   onMonto={(monto) => registrarMonto(cobro.id, monto)}
-                  onSeguro={(seguro) => registrarSeguro(cobro.id, seguro)}
                   onDetalle={(detail) => actualizarDetalle(cobro.id, detail)}
-                  onEditarPersona={() => setPersonaEditando(persona)}
+                  onEditarCobro={() => setCobroEditandoId(cobro.id)}
                   onPersona={() => {
                     setPersonaActiva(persona.id);
                     goToTab("personas");
@@ -1019,6 +1025,19 @@ function App() {
           onSave={(patch) => {
             updateEmprendedor(personaEditando.id, patch);
             setPersonaEditando(null);
+          }}
+        />
+      )}
+
+      {cobroEditando && personaCobroEditando && (
+        <CobroEditModal
+          cobro={cobroEditando}
+          persona={personaCobroEditando}
+          periodo={periodoCobroEditando}
+          onClose={() => setCobroEditandoId(null)}
+          onSave={(patch) => {
+            actualizarCobro(cobroEditando.id, patch);
+            setCobroEditandoId(null);
           }}
         />
       )}
@@ -1240,9 +1259,8 @@ function CobroCard({
   onPagar,
   onEstado,
   onMonto,
-  onSeguro,
   onDetalle,
-  onEditarPersona,
+  onEditarCobro,
   onPersona,
 }: {
   cobro: CobroSemanal;
@@ -1251,9 +1269,8 @@ function CobroCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onSeguro: (seguro: number) => void;
   onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
-  onEditarPersona: () => void;
+  onEditarCobro: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
@@ -1267,7 +1284,7 @@ function CobroCard({
           <span>{persona.rut} · {personaEstadoLabels[persona.estado]}</span>
         </button>
         <div className="card-header-actions">
-          <button className="icon-button" onClick={onEditarPersona} aria-label={`Editar ${persona.nombre}`}>
+          <button className="icon-button" onClick={onEditarCobro} aria-label={`Editar cobro de ${persona.nombre}`}>
             <Pencil size={17} />
           </button>
           <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
@@ -1288,18 +1305,10 @@ function CobroCard({
           <span>Cuota</span>
           <strong>{formatCurrency(cobro.cuota)}</strong>
         </div>
-        <label className="money-edit-field">
+        <div>
           <span>Seguro</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min="0"
-            step="1"
-            value={cobro.seguro || ""}
-            onChange={(event) => onSeguro(Number(event.target.value || 0))}
-            placeholder="0"
-          />
-        </label>
+          <strong>{formatCurrency(cobro.seguro)}</strong>
+        </div>
         <div>
           <span>Total</span>
           <strong>{formatCurrency(cobro.totalEsperado)}</strong>
@@ -2578,6 +2587,203 @@ function PersonaEditModal({
           <button className="secondary-button" onClick={onClose}>Cancelar</button>
           <button className="primary-button" onClick={handleSave}>
             <Check size={18} /> Guardar
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function CobroEditModal({
+  cobro,
+  persona,
+  periodo,
+  onClose,
+  onSave,
+}: {
+  cobro: CobroSemanal;
+  persona: Emprendedor;
+  periodo?: Periodo;
+  onClose: () => void;
+  onSave: (patch: Partial<CobroSemanal>) => void;
+}) {
+  const [form, setForm] = useState<CobroEditForm>({
+    cuota: cobro.cuota,
+    seguro: cobro.seguro,
+    montoPagado: cobro.montoPagado,
+    estadoPago: cobro.estadoPago,
+    fechaPago: cobro.fechaPago,
+    metodoPago: cobro.metodoPago,
+    referenciaPago: cobro.referenciaPago,
+    observacion: cobro.observacion,
+  });
+  const [touched, setTouched] = useState(false);
+  const totalEsperado = Math.max(Number(form.cuota || 0), 0) + Math.max(Number(form.seguro || 0), 0);
+  const hasInvalidNumbers = [form.cuota, form.seguro, form.montoPagado].some(
+    (value) => !Number.isFinite(value) || value < 0,
+  );
+  const requiresReference = Boolean(form.metodoPago && form.metodoPago !== "efectivo");
+  const missingReference = requiresReference && !form.referenciaPago.trim();
+  const hasErrors = hasInvalidNumbers || missingReference;
+
+  const updateForm = <K extends keyof CobroEditForm>(key: K, value: CobroEditForm[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleMetodo = (metodoPago: MetodoPago) => {
+    setForm((current) => ({
+      ...current,
+      metodoPago,
+      referenciaPago: metodoPago === "efectivo" ? "" : current.referenciaPago,
+    }));
+  };
+
+  const handleSave = () => {
+    setTouched(true);
+    if (hasErrors) return;
+
+    const cuota = Math.max(Number(form.cuota || 0), 0);
+    const seguro = Math.max(Number(form.seguro || 0), 0);
+    const total = cuota + seguro;
+    let montoPagado = Math.max(Number(form.montoPagado || 0), 0);
+    let estadoPago = form.estadoPago;
+
+    if (estadoPago === "pendiente" || estadoPago === "atrasado") {
+      montoPagado = 0;
+    } else if (estadoPago !== "revisar") {
+      estadoPago = montoPagado <= 0 ? "pendiente" : montoPagado >= total ? "pagado" : "parcial";
+    }
+
+    onSave({
+      cuota,
+      seguro,
+      totalEsperado: total,
+      montoPagado,
+      estadoPago,
+      fechaAtraso: estadoPago === "atrasado" ? cobro.fechaAtraso || new Date().toISOString() : "",
+      fechaPago: montoPagado > 0 ? form.fechaPago || new Date().toISOString().slice(0, 10) : "",
+      metodoPago: form.metodoPago,
+      referenciaPago: form.metodoPago === "efectivo" ? "" : form.referenciaPago.trim(),
+      observacion: form.observacion.trim(),
+      confirmadoPorTesorero: estadoPago === "pagado" && montoPagado >= total && total > 0,
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="edit-cobro-title">
+        <header>
+          <div>
+            <p className="eyebrow">Editar cobro</p>
+            <h2 id="edit-cobro-title">{persona.nombre}</h2>
+            <span className="modal-title-detail">
+              Cuota {periodo?.numeroCuota ?? cobro.periodoId} · {periodo ? formatDate(periodo.fechaVencimiento) : "sin fecha"}
+            </span>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar editor de cobro">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="modal-grid">
+          <ModalField label="Cuota" error={touched && form.cuota < 0 ? "La cuota debe ser igual o mayor a cero." : undefined}>
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={form.cuota || ""}
+              onChange={(event) => updateForm("cuota", Number(event.target.value || 0))}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="Seguro" error={touched && form.seguro < 0 ? "El seguro debe ser igual o mayor a cero." : undefined}>
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={form.seguro || ""}
+              onChange={(event) => updateForm("seguro", Number(event.target.value || 0))}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="Monto recibido" error={touched && form.montoPagado < 0 ? "El monto debe ser igual o mayor a cero." : undefined}>
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={form.montoPagado || ""}
+              onChange={(event) => updateForm("montoPagado", Number(event.target.value || 0))}
+              onBlur={() => setTouched(true)}
+            />
+          </ModalField>
+
+          <ModalField label="Estado">
+            <select value={form.estadoPago} onChange={(event) => updateForm("estadoPago", event.target.value as EstadoPago)}>
+              {estadoOptions.filter((estado) => estado !== "todos").map((estado) => (
+                <option key={estado} value={estado}>{estadoLabels[estado]}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Fecha de pago">
+            <input type="date" value={form.fechaPago} onChange={(event) => updateForm("fechaPago", event.target.value)} />
+          </ModalField>
+
+          <ModalField label="Metodo">
+            <select value={form.metodoPago} onChange={(event) => handleMetodo(event.target.value as MetodoPago)}>
+              {metodoOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </ModalField>
+        </div>
+
+        <section className={touched && missingReference ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
+          <div className="receipt-heading">
+            <span><ReceiptText size={15} /> Comprobante</span>
+            <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
+              <Check size={15} /> Efectivo
+            </button>
+          </div>
+          <label className="reference-input">
+            <span>N° transferencia o transaccion</span>
+            <input
+              value={form.referenciaPago}
+              onChange={(event) => updateForm("referenciaPago", event.target.value)}
+              placeholder={form.metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: 348921, BancoEstado, comprobante"}
+              disabled={form.metodoPago === "efectivo"}
+            />
+            <small>{missingReference ? "Ingresa el numero o descripcion del comprobante." : "Este dato queda guardado en el cobro."}</small>
+          </label>
+        </section>
+
+        <ModalField label="Observacion">
+          <textarea
+            value={form.observacion}
+            onChange={(event) => updateForm("observacion", event.target.value)}
+            rows={3}
+          />
+        </ModalField>
+
+        <div className="modal-info payment-summary">
+          <ReceiptText size={18} />
+          <span>
+            Total recalculado: {formatCurrency(totalEsperado)}. Saldo estimado: {formatCurrency(Math.max(totalEsperado - Number(form.montoPagado || 0), 0))}.
+          </span>
+        </div>
+
+        {touched && hasErrors && (
+          <div className="modal-error" role="alert">
+            Revisa seguro, cuota, monto y comprobante antes de guardar.
+          </div>
+        )}
+
+        <footer>
+          <button className="secondary-button" onClick={onClose}>Cancelar</button>
+          <button className="primary-button" onClick={handleSave}>
+            <Check size={18} /> Guardar cobro
           </button>
         </footer>
       </section>

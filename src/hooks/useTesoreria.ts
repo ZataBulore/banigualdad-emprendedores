@@ -451,22 +451,6 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     });
   };
 
-  const registrarSeguro = (id: string, seguro: number) => {
-    const cobro = state.cobros.find((item) => item.id === id);
-    if (!cobro) return;
-
-    const seguroNormalizado = Math.max(seguro, 0);
-    const totalEsperado = cobro.cuota + seguroNormalizado;
-    const estadoPago = deriveEstadoPago(cobro.montoPagado, totalEsperado, cobro.estadoPago);
-
-    updateCobro(id, {
-      seguro: seguroNormalizado,
-      totalEsperado,
-      estadoPago,
-      confirmadoPorTesorero: estadoPago === "pagado" && totalEsperado > 0,
-    });
-  };
-
   const registrarMontoCes = (id: string, montoPagado: number) => {
     const pago = state.pagosCes.find((item) => item.id === id);
     if (!pago) return;
@@ -487,6 +471,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     id: string,
     detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
   ) => updateCobro(id, detail);
+
+  const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch);
 
   const actualizarDetalleCes = (
     id: string,
@@ -625,8 +611,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     marcarCesPagado,
     cambiarEstadoCes,
     registrarMonto,
-    registrarSeguro,
     registrarMontoCes,
+    actualizarCobro,
     actualizarDetalle,
     actualizarDetalleCes,
     registrarPagoMultiple,

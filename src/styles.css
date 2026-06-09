@@ -973,7 +973,6 @@ button {
 }
 
 .money-grid div,
-.money-edit-field,
 .person-stats div {
   border-radius: 8px;
   background: var(--surface-muted);
@@ -986,24 +985,6 @@ button {
   margin-top: 2px;
   font-size: 0.88rem;
   font-weight: 760;
-}
-
-.money-edit-field {
-  display: grid;
-  gap: 4px;
-}
-
-.money-edit-field input {
-  width: 100%;
-  min-height: 28px;
-  border: 1px solid var(--line-soft);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 0 7px;
-  font-size: 0.88rem;
-  font-weight: 760;
-  outline: none;
 }
 
 .amount-input {
@@ -1825,6 +1806,14 @@ button {
   font-size: 1.08rem;
 }
 
+.modal-title-detail {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .modal-grid {
   display: grid;
   gap: 8px;
@@ -2372,7 +2361,6 @@ button {
   }
 
   .money-grid div,
-  .money-edit-field,
   .person-stats div {
     padding: 7px;
   }
