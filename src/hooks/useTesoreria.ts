@@ -37,6 +37,10 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
   return {
     ...state,
     configuracion,
+    emprendedores: state.emprendedores.map((emprendedor) => ({
+      ...emprendedor,
+      whatsapp: emprendedor.whatsapp ?? "",
+    })),
     pagosCes: state.pagosCes?.length
       ? state.pagosCes.map((pago) => ({
           ...pago,

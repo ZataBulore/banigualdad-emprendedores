@@ -22,6 +22,7 @@ export interface Emprendedor {
   id: string;
   nombre: string;
   rut: string;
+  whatsapp?: string;
   anillo: number;
   creditoOriginal: number;
   notas?: string;

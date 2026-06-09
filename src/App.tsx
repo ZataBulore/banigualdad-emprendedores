@@ -8,9 +8,12 @@ import {
   FileImage,
   History,
   Landmark,
+  MessageCircle,
   Pencil,
+  Phone,
   RotateCcw,
   Search,
+  Send,
   SlidersHorizontal,
   Upload,
   WalletCards,
@@ -24,7 +27,7 @@ import { getPeriodoTotals } from "./utils/totals";
 
 type Tab = "cobros" | "ces" | "personas" | "respaldo" | "config";
 type FiltroEstado = "todos" | EstadoPago;
-type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "creditoOriginal" | "anillo" | "notas">;
+type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "creditoOriginal" | "anillo" | "notas">;
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -72,6 +75,57 @@ const isValidRut = (rut: string) => {
   return dv === expected;
 };
 
+const cleanWhatsapp = (value = "") => value.replace(/\D/g, "");
+
+const normalizeWhatsapp = (value = "") => {
+  const digits = cleanWhatsapp(value);
+  if (!digits) return "";
+  if (digits.startsWith("56")) return digits;
+  if (digits.length === 9) return `56${digits}`;
+  return digits;
+};
+
+const formatWhatsapp = (value = "") => {
+  const normalized = normalizeWhatsapp(value);
+  if (!normalized) return "";
+  if (normalized.startsWith("56") && normalized.length === 11) {
+    return `+56 ${normalized.slice(2, 3)} ${normalized.slice(3, 7)} ${normalized.slice(7)}`;
+  }
+  return value;
+};
+
+const isValidWhatsapp = (value = "") => {
+  const normalized = normalizeWhatsapp(value);
+  return !normalized || /^569\d{8}$/.test(normalized);
+};
+
+const getFirstName = (nombre: string) => {
+  const [lastNames, names = nombre] = nombre.split(",");
+  return (names || lastNames).trim().split(" ")[0] || "Hola";
+};
+
+const buildWhatsappUrl = (telefono: string, message: string) => {
+  const normalized = normalizeWhatsapp(telefono);
+  if (!normalized) return "";
+  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+};
+
+const buildWhatsappMessages = (
+  persona: Emprendedor,
+  cobro?: CobroSemanal,
+  periodo?: Periodo,
+) => {
+  const nombre = getFirstName(persona.nombre);
+  const monto = cobro ? formatCurrency(Math.max(cobro.totalEsperado - cobro.montoPagado, 0)) : "el monto pendiente";
+  const vencimiento = periodo ? formatDate(periodo.fechaVencimiento) : "la fecha de vencimiento";
+
+  return {
+    proximo: `Hola ${nombre}, te recuerdo que tu pago de Banigualdad por ${monto} vence el ${vencimiento}. Si ya pagaste, por favor avisame para registrarlo. Gracias.`,
+    atrasado: `Hola ${nombre}, aparece pendiente tu pago de Banigualdad por ${monto}, con vencimiento ${vencimiento}. Por favor regularicemos este pago lo antes posible. Gracias.`,
+    ultimoDia: `Hola ${nombre}, hoy es el ultimo dia para registrar tu pago de Banigualdad por ${monto}. Si puedes, enviame confirmacion cuando realices el pago. Gracias.`,
+  };
+};
+
 const validatePersonaForm = (
   form: PersonaForm,
   personas: Emprendedor[],
@@ -102,6 +156,10 @@ const validatePersonaForm = (
 
   if ((form.notas ?? "").length > 200) {
     errors.notas = "La nota no puede superar 200 caracteres.";
+  }
+
+  if (!isValidWhatsapp(form.whatsapp)) {
+    errors.whatsapp = "Ingresa un WhatsApp chileno valido, por ejemplo +56 9 1234 5678.";
   }
 
   return errors;
@@ -149,7 +207,8 @@ function App() {
       const matchesSearch =
         !normalizedSearch ||
         persona?.nombre.toLowerCase().includes(normalizedSearch) ||
-        persona?.rut.toLowerCase().includes(normalizedSearch);
+        persona?.rut.toLowerCase().includes(normalizedSearch) ||
+        persona?.whatsapp?.toLowerCase().includes(normalizedSearch);
 
       return matchesEstado && matchesSearch;
     });
@@ -164,7 +223,8 @@ function App() {
       const matchesSearch =
         !normalizedSearch ||
         persona?.nombre.toLowerCase().includes(normalizedSearch) ||
-        persona?.rut.toLowerCase().includes(normalizedSearch);
+        persona?.rut.toLowerCase().includes(normalizedSearch) ||
+        persona?.whatsapp?.toLowerCase().includes(normalizedSearch);
 
       return matchesEstado && matchesSearch;
     });
@@ -186,7 +246,7 @@ function App() {
 
   const exportarCsv = () => {
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "observacion"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "observacion"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -196,6 +256,7 @@ function App() {
           cobroPeriodo?.fechaVencimiento ?? "",
           persona?.nombre ?? "",
           persona?.rut ?? "",
+          persona?.whatsapp ?? "",
           persona?.creditoOriginal ?? "",
           cobro.cuota,
           cobro.seguro,
@@ -215,6 +276,7 @@ function App() {
           pago.fechaVencimiento,
           persona?.nombre ?? "",
           persona?.rut ?? "",
+          persona?.whatsapp ?? "",
           pago.creditoBase,
           "",
           "",
@@ -336,7 +398,7 @@ function App() {
               <input
                 value={busqueda}
                 onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar nombre o RUT"
+                placeholder="Buscar nombre, RUT o WhatsApp"
               />
             </label>
             <div className="chips" role="list" aria-label="Filtrar por estado">
@@ -412,7 +474,7 @@ function App() {
               <input
                 value={busqueda}
                 onChange={(event) => setBusqueda(event.target.value)}
-                placeholder="Buscar nombre o RUT"
+                placeholder="Buscar nombre, RUT o WhatsApp"
               />
             </label>
             <div className="chips" role="list" aria-label="Filtrar por estado CES">
@@ -678,6 +740,14 @@ function PersonaPanel({ persona, state }: { persona?: Emprendedor; state: Tesore
       periodo: state.periodos.find((periodo) => periodo.id === cobro.periodoId),
     }));
   const totals = getPeriodoTotals(historial.map(({ cobro }) => cobro));
+  const contactoCobro =
+    historial.find(({ cobro }) => cobro.estadoPago === "atrasado") ??
+    historial.find(({ cobro }) => cobro.estadoPago === "pendiente" || cobro.estadoPago === "parcial") ??
+    historial[0];
+  const whatsappMessages = contactoCobro
+    ? buildWhatsappMessages(persona, contactoCobro.cobro, contactoCobro.periodo)
+    : buildWhatsappMessages(persona);
+  const hasWhatsapp = Boolean(normalizeWhatsapp(persona.whatsapp));
 
   return (
     <article className="person-panel">
@@ -691,6 +761,32 @@ function PersonaPanel({ persona, state }: { persona?: Emprendedor; state: Tesore
       </header>
 
       {persona.notas && <p className="inline-alert">{persona.notas}</p>}
+
+      <section className="contact-panel">
+        <header>
+          <div>
+            <p className="eyebrow">Contacto</p>
+            <h3>WhatsApp</h3>
+            <span>{persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}</span>
+          </div>
+          <Phone size={20} />
+        </header>
+        {hasWhatsapp ? (
+          <div className="whatsapp-actions">
+            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.proximo)} target="_blank" rel="noreferrer">
+              <MessageCircle size={17} /> Pago pronto
+            </a>
+            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.atrasado)} target="_blank" rel="noreferrer">
+              <AlertTriangle size={17} /> Atraso
+            </a>
+            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.ultimoDia)} target="_blank" rel="noreferrer">
+              <Send size={17} /> Ultimo dia
+            </a>
+          </div>
+        ) : (
+          <p className="contact-empty">Agrega el numero desde el lapiz de cualquier tarjeta o desde Config.</p>
+        )}
+      </section>
 
       <div className="person-stats">
         <div>
@@ -967,6 +1063,7 @@ function ConfigPanel({
             <article className="person-config-card" key={persona.id}>
               <ConfigInput label="Nombre" value={persona.nombre} onChange={(value) => onPersona(persona.id, { nombre: value })} />
               <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
+              <ConfigInput label="WhatsApp" value={persona.whatsapp ?? ""} onChange={(value) => onPersona(persona.id, { whatsapp: value })} />
               <ConfigInput label="Credito original" type="number" value={String(persona.creditoOriginal)} onChange={(value) => onPersona(persona.id, { creditoOriginal: Number(value || 0) })} />
               <ConfigInput label="Anillo" type="number" value={String(persona.anillo)} onChange={(value) => onPersona(persona.id, { anillo: Number(value || 0) })} />
               <ConfigInput label="Notas" value={persona.notas ?? ""} onChange={(value) => onPersona(persona.id, { notas: value })} />
@@ -994,6 +1091,7 @@ function PersonaEditModal({
   const [form, setForm] = useState<PersonaForm>({
     nombre: persona.nombre,
     rut: persona.rut,
+    whatsapp: persona.whatsapp ?? "",
     creditoOriginal: persona.creditoOriginal,
     anillo: persona.anillo,
     notas: persona.notas ?? "",
@@ -1015,6 +1113,7 @@ function PersonaEditModal({
       ...form,
       nombre: form.nombre.trim(),
       rut: formatRut(form.rut),
+      whatsapp: formatWhatsapp(form.whatsapp),
       notas: form.notas?.trim() || undefined,
     });
   };
@@ -1050,6 +1149,19 @@ function PersonaEditModal({
                 setTouched(true);
               }}
               inputMode="text"
+            />
+          </ModalField>
+
+          <ModalField label="WhatsApp" error={touched ? errors.whatsapp : undefined} hint="Opcional. Ejemplo: +56 9 1234 5678">
+            <input
+              value={form.whatsapp ?? ""}
+              onChange={(event) => updateForm("whatsapp", event.target.value)}
+              onBlur={() => {
+                updateForm("whatsapp", formatWhatsapp(form.whatsapp));
+                setTouched(true);
+              }}
+              inputMode="tel"
+              placeholder="+56 9 1234 5678"
             />
           </ModalField>
 
