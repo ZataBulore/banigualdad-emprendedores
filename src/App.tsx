@@ -198,12 +198,14 @@ const decodeGoogleCredential = (credential: string): AuthUser => {
 
 const loadAuthSession = () => {
   try {
-    const stored = window.sessionStorage.getItem(AUTH_SESSION_KEY);
+    const stored = window.localStorage.getItem(AUTH_SESSION_KEY) ?? window.sessionStorage.getItem(AUTH_SESSION_KEY);
     if (!stored) return null;
     const user = JSON.parse(stored) as AuthUser;
     if (user.authSource !== "google" || user.sessionVersion !== AUTH_SESSION_VERSION || !user.email) {
       return null;
     }
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+    window.sessionStorage.removeItem(AUTH_SESSION_KEY);
     return user;
   } catch {
     return null;
@@ -409,19 +411,24 @@ function App() {
 
     if (!isAllowed) {
       window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+      window.localStorage.removeItem(AUTH_SESSION_KEY);
       setAuthUser(null);
       setAuthError(`La cuenta ${email} no esta autorizada para ver este sistema.`);
       return;
     }
 
     const sessionUser: AuthUser = { ...user, authSource: "google", sessionVersion: AUTH_SESSION_VERSION };
-    window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser));
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionUser));
+    window.sessionStorage.removeItem(AUTH_SESSION_KEY);
     setAuthUser(sessionUser);
     setAuthError("");
   };
 
   const handleLogout = () => {
+    const confirmed = confirmarAccionCritica("Cerrar sesion? Tendras que volver a ingresar con tu cuenta de Google.");
+    if (!confirmed) return;
     window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+    window.localStorage.removeItem(AUTH_SESSION_KEY);
     setAuthUser(null);
   };
 
@@ -669,8 +676,13 @@ function App() {
         </div>
         <div className="hero-actions">
           <div className="auth-session">
-            {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
-            <span>{authUser.email}</span>
+            <span className="auth-avatar">
+              {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
+            </span>
+            <span className="auth-user">
+              <strong>{authUser.nombre || "Cuenta Google"}</strong>
+              <small>{authUser.email}</small>
+            </span>
             <button type="button" onClick={handleLogout} aria-label="Cerrar sesion">
               <LogOut size={16} />
             </button>
