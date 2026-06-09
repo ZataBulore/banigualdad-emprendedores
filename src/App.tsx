@@ -2291,6 +2291,8 @@ function HistorialPanel({ movimientos }: { movimientos: MovimientoHistorial[] })
   const paginaActual = Math.min(pagina, totalPaginas);
   const inicio = (paginaActual - 1) * pageSize;
   const paginaMovimientos = movimientosFiltrados.slice(inicio, inicio + pageSize);
+  const rangoDesde = movimientosFiltrados.length ? inicio + 1 : 0;
+  const rangoHasta = Math.min(inicio + pageSize, movimientosFiltrados.length);
 
   useEffect(() => {
     setPagina(1);
@@ -2310,12 +2312,38 @@ function HistorialPanel({ movimientos }: { movimientos: MovimientoHistorial[] })
         <SearchInput
           value={busquedaHistorial}
           onChange={setBusquedaHistorial}
-          placeholder="Buscar accion, persona, correo, tipo o detalle"
+          placeholder="Buscar historial"
         />
         <div className="audit-count">
           <strong>{movimientosFiltrados.length}</strong>
           <span>movimientos</span>
         </div>
+      </div>
+
+      <div className="audit-mobile-list" aria-label="Historial de movimientos">
+        {paginaMovimientos.map((movimiento) => (
+          <article className="audit-card" key={movimiento.id}>
+            <header>
+              <span className={`audit-type ${movimiento.tipo}`}>{movimiento.tipo}</span>
+              <time>{formatDateTime(movimiento.fecha)}</time>
+            </header>
+            <strong>{movimiento.accion}</strong>
+            <dl>
+              <div>
+                <dt>Para</dt>
+                <dd>{movimiento.personaNombre || movimiento.personaId || "Sistema"}</dd>
+              </div>
+              <div>
+                <dt>Usuario</dt>
+                <dd>{movimiento.usuarioEmail}</dd>
+              </div>
+            </dl>
+            <p>{movimiento.detalle}</p>
+          </article>
+        ))}
+        {!paginaMovimientos.length && (
+          <p className="empty-state">Aun no hay movimientos para mostrar.</p>
+        )}
       </div>
 
       <div className="audit-table-wrap">
@@ -2356,7 +2384,7 @@ function HistorialPanel({ movimientos }: { movimientos: MovimientoHistorial[] })
         <button className="secondary-button" onClick={() => setPagina((current) => Math.max(current - 1, 1))} disabled={paginaActual <= 1}>
           Anterior
         </button>
-        <span>Pagina {paginaActual} de {totalPaginas}</span>
+        <span>{rangoDesde}-{rangoHasta} de {movimientosFiltrados.length}</span>
         <button className="secondary-button" onClick={() => setPagina((current) => Math.min(current + 1, totalPaginas))} disabled={paginaActual >= totalPaginas}>
           Siguiente
         </button>
