@@ -60,9 +60,9 @@ const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "
   .map((email: string) => email.trim().toLowerCase())
   .filter(Boolean);
 const DEFAULT_EMAIL_ADMIN_PASSWORD_HASH = "589c28b7d0ad18ffd68f975471d24dd60d78b0a4850524e7540f45f309713b50";
-const EMAIL_ADMIN_PASSWORD_HASH = String(import.meta.env.VITE_EMAIL_ADMIN_PASSWORD_HASH ?? DEFAULT_EMAIL_ADMIN_PASSWORD_HASH)
-  .trim()
-  .toLowerCase();
+const EMAIL_ADMIN_PASSWORD_HASH =
+  String(import.meta.env.VITE_EMAIL_ADMIN_PASSWORD_HASH ?? "").trim().toLowerCase() ||
+  DEFAULT_EMAIL_ADMIN_PASSWORD_HASH;
 const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 
