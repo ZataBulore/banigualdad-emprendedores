@@ -16,6 +16,7 @@ import {
   Send,
   SlidersHorizontal,
   Upload,
+  Users,
   WalletCards,
   X,
 } from "lucide-react";
@@ -436,7 +437,7 @@ function App() {
           <Landmark size={18} /> CES
         </button>
         <button className={tab === "personas" ? "active" : ""} onClick={() => setTab("personas")}>
-          <History size={18} /> Personas
+          <Users size={18} /> Personas
         </button>
         <button className={tab === "respaldo" ? "active" : ""} onClick={() => setTab("respaldo")}>
           <Download size={18} /> Respaldo
@@ -596,7 +597,11 @@ function App() {
               ))}
               {!emprendedoresFiltrados.length && <p className="empty-state">No hay personas para esta busqueda.</p>}
             </aside>
-            <PersonaPanel persona={personaVisible} state={state} />
+            <PersonaPanel
+              persona={personaVisible}
+              state={state}
+              onEditarPersona={(persona) => setPersonaEditando(persona)}
+            />
           </div>
         </section>
       )}
@@ -706,7 +711,7 @@ function SectionBanner({
     personas: {
       title: "Personas del grupo",
       detail: "Ficha, historial y contacto por WhatsApp",
-      icon: <History size={20} />,
+      icon: <Users size={20} />,
     },
     respaldo: {
       title: "Respaldo",
@@ -861,11 +866,19 @@ function CobroCard({
   );
 }
 
-function PersonaPanel({ persona, state }: { persona?: Emprendedor; state: TesoreriaState }) {
+function PersonaPanel({
+  persona,
+  state,
+  onEditarPersona,
+}: {
+  persona?: Emprendedor;
+  state: TesoreriaState;
+  onEditarPersona: (persona: Emprendedor) => void;
+}) {
   if (!persona) {
     return (
       <article className="person-panel empty">
-        <History size={28} />
+        <Users size={28} />
         <p>Selecciona una persona para ver su historial.</p>
       </article>
     );
@@ -895,7 +908,12 @@ function PersonaPanel({ persona, state }: { persona?: Emprendedor; state: Tesore
           <h2>{persona.nombre}</h2>
           <span>{persona.rut}</span>
         </div>
-        <strong>{formatCurrency(persona.creditoOriginal)}</strong>
+        <div className="person-panel-actions">
+          <strong>{formatCurrency(persona.creditoOriginal)}</strong>
+          <button className="icon-button" onClick={() => onEditarPersona(persona)} aria-label={`Editar ${persona.nombre}`}>
+            <Pencil size={17} />
+          </button>
+        </div>
       </header>
 
       {persona.notas && <p className="inline-alert">{persona.notas}</p>}

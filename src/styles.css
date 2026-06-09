@@ -781,6 +781,13 @@ button {
   font-size: 0.95rem;
 }
 
+.person-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .inline-alert {
   border-radius: 8px;
   background: #fff4df;
