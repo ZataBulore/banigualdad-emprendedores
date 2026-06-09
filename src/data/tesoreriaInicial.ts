@@ -12,6 +12,9 @@ export const configuracionInicial: ConfiguracionSistema = {
       "100000": 8140,
     },
   },
+  seguridad: {
+    correosAutorizados: [],
+  },
 };
 
 export const getMontoCes = (
@@ -31,6 +34,7 @@ export const crearPagosCes = (
     totalEsperado: getMontoCes(emprendedor.creditoOriginal, configuracion.ces.montosPorCredito),
     montoPagado: 0,
     estadoPago: "pendiente" as const,
+    fechaAtraso: "",
     fechaPago: "",
     metodoPago: "" as const,
     referenciaPago: "",
@@ -104,6 +108,7 @@ const crearCobrosSemanales = () =>
       montoPagado: 0,
       estadoPago: "pendiente" as const,
       atraso: 0,
+      fechaAtraso: "",
       fechaPago: "",
       metodoPago: "" as const,
       referenciaPago: "",

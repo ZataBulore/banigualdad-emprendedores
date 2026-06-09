@@ -20,6 +20,11 @@ export interface ConfiguracionCes {
 
 export interface ConfiguracionSistema {
   ces: ConfiguracionCes;
+  seguridad: ConfiguracionSeguridad;
+}
+
+export interface ConfiguracionSeguridad {
+  correosAutorizados: string[];
 }
 
 export interface Emprendedor {
@@ -46,6 +51,7 @@ export interface CobroSemanal {
   montoPagado: number;
   estadoPago: EstadoPago;
   atraso: number;
+  fechaAtraso: string;
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;
@@ -61,6 +67,7 @@ export interface PagoCes {
   totalEsperado: number;
   montoPagado: number;
   estadoPago: EstadoPago;
+  fechaAtraso: string;
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;

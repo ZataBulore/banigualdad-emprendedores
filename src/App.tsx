@@ -9,6 +9,8 @@ import {
   FileImage,
   History,
   Landmark,
+  LogOut,
+  LockKeyhole,
   MessageCircle,
   Pencil,
   Phone,
@@ -17,6 +19,7 @@ import {
   RotateCcw,
   Search,
   Send,
+  ShieldCheck,
   SlidersHorizontal,
   Trash2,
   Upload,
@@ -24,15 +27,38 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { ChangeEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
-import type { Centro, CobroSemanal, ConfiguracionCes, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
-type Tab = "cobros" | "ces" | "personas" | "asistencias" | "respaldo" | "config";
+type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
+type ConfigTab = "general" | "seguridad" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
+type AuthUser = { email: string; nombre: string; foto?: string };
+type GoogleCredentialResponse = { credential?: string };
+
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: { client_id: string; callback: (response: GoogleCredentialResponse) => void }) => void;
+          renderButton: (parent: HTMLElement, options: Record<string, string | number | boolean>) => void;
+        };
+      };
+    };
+  }
+}
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
+const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "")
+  .split(/[,\n;]/)
+  .map((email: string) => email.trim().toLowerCase())
+  .filter(Boolean);
+const AUTH_SESSION_KEY = "semilla-emprende-google-user";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -119,6 +145,55 @@ const isValidWhatsapp = (value = "") => {
   const normalized = normalizeWhatsapp(value);
   return !normalized || /^569\d{8}$/.test(normalized);
 };
+
+const normalizeEmailList = (emails: string[]) =>
+  Array.from(
+    new Set(
+      emails
+        .flatMap((email) => email.split(/[,\n;]/))
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+const parseEmailList = (value: string) => normalizeEmailList(value.split(/[,\n;]/));
+
+const decodeGoogleCredential = (credential: string): AuthUser => {
+  const [, payload] = credential.split(".");
+  const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const json = decodeURIComponent(
+    Array.from(atob(normalized))
+      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+      .join(""),
+  );
+  const data = JSON.parse(json) as { email?: string; name?: string; picture?: string };
+
+  return {
+    email: (data.email ?? "").toLowerCase(),
+    nombre: data.name ?? data.email ?? "Cuenta Google",
+    foto: data.picture,
+  };
+};
+
+const loadAuthSession = () => {
+  try {
+    const stored = window.sessionStorage.getItem(AUTH_SESSION_KEY);
+    return stored ? JSON.parse(stored) as AuthUser : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatDateTime = (value?: string) =>
+  value
+    ? new Intl.DateTimeFormat("es-CL", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(value))
+    : "";
 
 const normalizeSearchText = (value = "") =>
   value
@@ -263,6 +338,7 @@ function App() {
     updatePeriodo,
     updateEmprendedor,
     updateConfiguracionCes,
+    updateConfiguracionSeguridad,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
@@ -289,7 +365,51 @@ function App() {
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
   const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
+  const [authError, setAuthError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const correosAutorizados = useMemo(
+    () => normalizeEmailList([
+      ...state.configuracion.seguridad.correosAutorizados,
+      ...ENV_AUTHORIZED_EMAILS,
+    ]),
+    [state.configuracion.seguridad.correosAutorizados],
+  );
+
+  const handleGoogleLogin = (user: AuthUser) => {
+    const email = user.email.toLowerCase();
+    const isAllowed = !correosAutorizados.length || correosAutorizados.includes(email);
+
+    if (!isAllowed) {
+      window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+      setAuthUser(null);
+      setAuthError(`La cuenta ${email} no esta autorizada para ver este sistema.`);
+      return;
+    }
+
+    window.sessionStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+    setAuthUser(user);
+    setAuthError("");
+  };
+
+  const handleLogout = () => {
+    window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+    setAuthUser(null);
+  };
+
+  const scrollToTop = () => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+  };
+
+  const goToTab = (nextTab: Tab) => {
+    setTab(nextTab);
+    scrollToTop();
+  };
 
   const periodo = state.periodos.find((item) => item.id === periodoId) ?? state.periodos[0];
   const reunionActiva = state.reuniones.find((item) => item.id === reunionId) ?? state.reuniones[0];
@@ -307,6 +427,7 @@ function App() {
         cobro.totalEsperado,
         cobro.montoPagado,
         cobro.estadoPago,
+        cobro.fechaAtraso,
         cobro.fechaPago,
         cobro.metodoPago,
         cobro.referenciaPago,
@@ -327,6 +448,7 @@ function App() {
         pago.totalEsperado,
         pago.montoPagado,
         pago.estadoPago,
+        pago.fechaAtraso,
         pago.fechaPago,
         pago.metodoPago,
         pago.referenciaPago,
@@ -499,6 +621,17 @@ function App() {
     resetear();
   };
 
+  if (!authUser) {
+    return (
+      <LoginGate
+        clientId={GOOGLE_CLIENT_ID}
+        allowedEmails={correosAutorizados}
+        error={authError}
+        onLogin={handleGoogleLogin}
+      />
+    );
+  }
+
   return (
     <main className={`app-shell section-${tab}`}>
       <section className="hero">
@@ -508,6 +641,13 @@ function App() {
           <p>{state.centro.nombreCentro} · {state.centro.zona}</p>
         </div>
         <div className="hero-actions">
+          <div className="auth-session">
+            {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
+            <span>{authUser.email}</span>
+            <button type="button" onClick={handleLogout} aria-label="Cerrar sesion">
+              <LogOut size={16} />
+            </button>
+          </div>
           <select value={periodo?.id} onChange={(event) => setPeriodoId(event.target.value)} aria-label="Seleccionar semana de cobro">
             {state.periodos.map((item) => (
               <option key={item.id} value={item.id}>
@@ -560,22 +700,19 @@ function App() {
       )}
 
       <nav className="tabbar" aria-label="Secciones">
-        <button className={tab === "cobros" ? "active" : ""} onClick={() => setTab("cobros")}>
+        <button className={tab === "cobros" ? "active" : ""} onClick={() => goToTab("cobros")}>
           <WalletCards size={18} /> Cobros
         </button>
-        <button className={tab === "ces" ? "active" : ""} onClick={() => setTab("ces")}>
+        <button className={tab === "ces" ? "active" : ""} onClick={() => goToTab("ces")}>
           <Landmark size={18} /> CES
         </button>
-        <button className={tab === "personas" ? "active" : ""} onClick={() => setTab("personas")}>
+        <button className={tab === "personas" ? "active" : ""} onClick={() => goToTab("personas")}>
           <Users size={18} /> Personas
         </button>
-        <button className={tab === "asistencias" ? "active" : ""} onClick={() => setTab("asistencias")}>
+        <button className={tab === "asistencias" ? "active" : ""} onClick={() => goToTab("asistencias")}>
           <CalendarCheck size={18} /> Reuniones
         </button>
-        <button className={tab === "respaldo" ? "active" : ""} onClick={() => setTab("respaldo")}>
-          <Download size={18} /> Respaldo
-        </button>
-        <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
+        <button className={tab === "config" ? "active" : ""} onClick={() => goToTab("config")}>
           <SlidersHorizontal size={18} /> Config
         </button>
       </nav>
@@ -645,7 +782,7 @@ function App() {
                   onEditarPersona={() => setPersonaEditando(persona)}
                   onPersona={() => {
                     setPersonaActiva(persona.id);
-                    setTab("personas");
+                    goToTab("personas");
                   }}
                 />
               );
@@ -718,7 +855,7 @@ function App() {
                   onEditarPersona={() => setPersonaEditando(persona)}
                   onPersona={() => {
                     setPersonaActiva(persona.id);
-                    setTab("personas");
+                    goToTab("personas");
                   }}
                 />
               );
@@ -785,43 +922,6 @@ function App() {
         />
       )}
 
-      {tab === "respaldo" && (
-        <section className="workspace backup-panel">
-          <div className="backup-card">
-            <Download size={24} />
-            <h2>Exportar informacion</h2>
-            <p>Descarga un respaldo completo JSON o una planilla CSV para revisar en Excel o Google Sheets.</p>
-            <div className="button-row">
-              <button className="primary-button" onClick={exportarJson}>
-                <Download size={18} /> JSON
-              </button>
-              <button className="secondary-button" onClick={exportarCsv}>
-                <Download size={18} /> CSV
-              </button>
-            </div>
-          </div>
-
-          <div className="backup-card">
-            <Upload size={24} />
-            <h2>Importar respaldo</h2>
-            <p>Restaura un JSON exportado por esta misma aplicacion.</p>
-            <input ref={fileInputRef} className="hidden-input" type="file" accept="application/json" onChange={handleImport} />
-            <button className="secondary-button" onClick={() => fileInputRef.current?.click()}>
-              <Upload size={18} /> Elegir archivo
-            </button>
-          </div>
-
-          <div className="backup-card caution">
-            <RotateCcw size={24} />
-            <h2>Reiniciar datos locales</h2>
-            <p>Vuelve al periodo inicial cargado desde la captura. Esto limpia los cambios guardados en este navegador.</p>
-            <button className="danger-button" onClick={handleReset}>
-              <RotateCcw size={18} /> Reiniciar
-            </button>
-          </div>
-        </section>
-      )}
-
       {tab === "config" && (
         <ConfigPanel
           state={state}
@@ -830,10 +930,16 @@ function App() {
           onPeriodo={updatePeriodo}
           onPersona={updateEmprendedor}
           onCes={updateConfiguracionCes}
+          onSeguridad={updateConfiguracionSeguridad}
           onRecalcularCes={recalcularPagosCes}
           busqueda={busqueda}
           onBusqueda={setBusqueda}
           personasFiltradas={emprendedoresFiltrados}
+          onExportJson={exportarJson}
+          onExportCsv={exportarCsv}
+          fileInputRef={fileInputRef}
+          onImport={handleImport}
+          onReset={handleReset}
         />
       )}
 
@@ -862,6 +968,105 @@ function App() {
           }}
         />
       )}
+    </main>
+  );
+}
+
+function LoginGate({
+  clientId,
+  allowedEmails,
+  error,
+  onLogin,
+}: {
+  clientId: string;
+  allowedEmails: string[];
+  error: string;
+  onLogin: (user: AuthUser) => void;
+}) {
+  const buttonRef = useRef<HTMLDivElement>(null);
+  const [scriptReady, setScriptReady] = useState(false);
+  const [internalError, setInternalError] = useState("");
+
+  useEffect(() => {
+    if (!clientId) return;
+    if (window.google?.accounts?.id) {
+      setScriptReady(true);
+      return;
+    }
+
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    const script = existing ?? document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setScriptReady(true);
+    script.onerror = () => setInternalError("No se pudo cargar Google Identity Services. Revisa la conexion.");
+    if (!existing) document.head.appendChild(script);
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!clientId || !scriptReady || !buttonRef.current || !window.google?.accounts?.id) return;
+
+    buttonRef.current.innerHTML = "";
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (response) => {
+        if (!response.credential) {
+          setInternalError("Google no entrego una credencial valida. Intentalo nuevamente.");
+          return;
+        }
+
+        try {
+          onLogin(decodeGoogleCredential(response.credential));
+        } catch {
+          setInternalError("No se pudo leer la cuenta de Google. Intentalo nuevamente.");
+        }
+      },
+    });
+    window.google.accounts.id.renderButton(buttonRef.current, {
+      theme: "outline",
+      size: "large",
+      shape: "pill",
+      width: 280,
+      text: "signin_with",
+      locale: "es",
+    });
+  }, [clientId, onLogin, scriptReady]);
+
+  return (
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="login-icon">
+          <LockKeyhole size={30} />
+        </div>
+        <p className="eyebrow">Acceso privado</p>
+        <h1>Sistema Semilla Emprende</h1>
+        <p className="login-copy">
+          Ingresa con una cuenta de Google autorizada para ver cobros, personas, CES y reuniones del grupo.
+        </p>
+
+        {!clientId ? (
+          <div className="login-warning">
+            <strong>Falta configurar Google Login</strong>
+            <span>Agrega el secreto/variable `VITE_GOOGLE_CLIENT_ID` en GitHub Pages o en el build local.</span>
+          </div>
+        ) : (
+          <div className="google-login-button" ref={buttonRef}>
+            {!scriptReady && <span>Cargando Google...</span>}
+          </div>
+        )}
+
+        {(error || internalError) && <div className="login-error">{error || internalError}</div>}
+
+        <div className="login-allowlist">
+          <ShieldCheck size={18} />
+          <span>
+            {allowedEmails.length
+              ? `${allowedEmails.length} correo${allowedEmails.length === 1 ? "" : "s"} autorizado${allowedEmails.length === 1 ? "" : "s"}.`
+              : "Aun no hay correos autorizados configurados; el primer acceso queda abierto para configurar la lista."}
+          </span>
+        </div>
+      </section>
     </main>
   );
 }
@@ -910,14 +1115,9 @@ function SectionBanner({
       detail: "Reuniones, asistencia y actas del grupo",
       icon: <CalendarCheck size={20} />,
     },
-    respaldo: {
-      title: "Respaldo",
-      detail: "Exportar, importar y proteger registros",
-      icon: <Download size={20} />,
-    },
     config: {
       title: "Configuracion",
-      detail: "Datos base, reglas CES y periodos",
+      detail: "Datos base, seguridad y respaldo",
       icon: <SlidersHorizontal size={20} />,
     },
   };
@@ -1042,6 +1242,13 @@ function CobroCard({
           <AlertTriangle size={17} /> Atraso
         </button>
       </div>
+
+      {cobro.estadoPago === "atrasado" && cobro.fechaAtraso && (
+        <div className="late-stamp">
+          <AlertTriangle size={15} />
+          <span>Atrasado desde {formatDateTime(cobro.fechaAtraso)}</span>
+        </div>
+      )}
 
       <div className="detail-grid">
         <label>
@@ -1172,13 +1379,13 @@ function PersonaPanel({
         {hasWhatsapp ? (
           <div className="whatsapp-actions">
             <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.proximo)} target="_blank" rel="noreferrer">
-              <MessageCircle size={17} /> Pago pronto
+              <MessageCircle size={17} /> Notificar pago pronto
             </a>
             <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.atrasado)} target="_blank" rel="noreferrer">
-              <AlertTriangle size={17} /> Atraso
+              <AlertTriangle size={17} /> Notificar atraso
             </a>
             <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.ultimoDia)} target="_blank" rel="noreferrer">
-              <Send size={17} /> Ultimo dia
+              <Send size={17} /> Notificar ultimo dia
             </a>
           </div>
         ) : (
@@ -1317,6 +1524,13 @@ function CesCard({
           <AlertTriangle size={17} /> Atraso
         </button>
       </div>
+
+      {pago.estadoPago === "atrasado" && pago.fechaAtraso && (
+        <div className="late-stamp">
+          <AlertTriangle size={15} />
+          <span>Atrasado desde {formatDateTime(pago.fechaAtraso)}</span>
+        </div>
+      )}
 
       <div className="detail-grid">
         <label>
@@ -1603,10 +1817,16 @@ function ConfigPanel({
   onPeriodo,
   onPersona,
   onCes,
+  onSeguridad,
   onRecalcularCes,
   busqueda,
   onBusqueda,
   personasFiltradas,
+  onExportJson,
+  onExportCsv,
+  fileInputRef,
+  onImport,
+  onReset,
 }: {
   state: TesoreriaState;
   periodo?: Periodo;
@@ -1614,15 +1834,71 @@ function ConfigPanel({
   onPeriodo: (id: string, patch: Partial<Periodo>) => void;
   onPersona: (id: string, patch: Partial<Emprendedor>) => void;
   onCes: (patch: Partial<ConfiguracionCes>) => void;
+  onSeguridad: (patch: Partial<ConfiguracionSeguridad>) => void;
   onRecalcularCes: () => void;
   busqueda: string;
   onBusqueda: (value: string) => void;
   personasFiltradas: Emprendedor[];
+  onExportJson: () => void;
+  onExportCsv: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  onReset: () => void;
 }) {
+  const [configTab, setConfigTab] = useState<ConfigTab>("general");
   const cesRules = state.configuracion.ces.montosPorCredito;
+  const authorizedEmailsText = state.configuracion.seguridad.correosAutorizados.join("\n");
 
   return (
     <section className="workspace config-panel">
+      <div className="config-tabs" role="tablist" aria-label="Apartados de configuracion">
+        <button className={configTab === "general" ? "active" : ""} onClick={() => setConfigTab("general")}>
+          <SlidersHorizontal size={17} /> General
+        </button>
+        <button className={configTab === "seguridad" ? "active" : ""} onClick={() => setConfigTab("seguridad")}>
+          <ShieldCheck size={17} /> Seguridad
+        </button>
+        <button className={configTab === "respaldo" ? "active" : ""} onClick={() => setConfigTab("respaldo")}>
+          <Download size={17} /> Respaldo
+        </button>
+      </div>
+
+      {configTab === "seguridad" && (
+        <section className="config-section security-section">
+          <header>
+            <div>
+              <p className="eyebrow">Seguridad</p>
+              <h2>Correos autorizados</h2>
+            </div>
+            <ShieldCheck size={22} />
+          </header>
+          <label className="config-field">
+            <span>Lista de correos Google</span>
+            <textarea
+              value={authorizedEmailsText}
+              onChange={(event) => onSeguridad({ correosAutorizados: parseEmailList(event.target.value) })}
+              rows={4}
+              placeholder="correo1@gmail.com&#10;correo2@gmail.com"
+            />
+          </label>
+          <p className="config-note">
+            Puedes escribir un correo por linea, separado por coma o punto y coma. Si la lista queda vacia, cualquier cuenta Google podra entrar mientras configuras el sistema.
+          </p>
+        </section>
+      )}
+
+      {configTab === "respaldo" && (
+        <BackupPanel
+          onExportJson={onExportJson}
+          onExportCsv={onExportCsv}
+          fileInputRef={fileInputRef}
+          onImport={onImport}
+          onReset={onReset}
+        />
+      )}
+
+      {configTab === "general" && (
+        <>
       <section className="config-section">
         <header>
           <div>
@@ -1759,6 +2035,59 @@ function ConfigPanel({
           {!personasFiltradas.length && <p className="empty-state">No hay personas para esta busqueda.</p>}
         </div>
       </section>
+        </>
+      )}
+    </section>
+  );
+}
+
+function BackupPanel({
+  onExportJson,
+  onExportCsv,
+  fileInputRef,
+  onImport,
+  onReset,
+}: {
+  onExportJson: () => void;
+  onExportCsv: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onImport: (event: ChangeEvent<HTMLInputElement>) => void;
+  onReset: () => void;
+}) {
+  return (
+    <section className="backup-panel">
+      <div className="backup-card">
+        <Download size={24} />
+        <h2>Exportar informacion</h2>
+        <p>Descarga un respaldo completo JSON o una planilla CSV para revisar en Excel o Google Sheets.</p>
+        <div className="button-row">
+          <button className="primary-button" onClick={onExportJson}>
+            <Download size={18} /> JSON
+          </button>
+          <button className="secondary-button" onClick={onExportCsv}>
+            <Download size={18} /> CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="backup-card">
+        <Upload size={24} />
+        <h2>Importar respaldo</h2>
+        <p>Restaura un JSON exportado por esta misma aplicacion.</p>
+        <input ref={fileInputRef} className="hidden-input" type="file" accept="application/json" onChange={onImport} />
+        <button className="secondary-button" onClick={() => fileInputRef.current?.click()}>
+          <Upload size={18} /> Elegir archivo
+        </button>
+      </div>
+
+      <div className="backup-card caution">
+        <RotateCcw size={24} />
+        <h2>Reiniciar datos locales</h2>
+        <p>Vuelve al periodo inicial cargado desde la captura. Esto limpia los cambios guardados en este navegador.</p>
+        <button className="danger-button" onClick={onReset}>
+          <RotateCcw size={18} /> Reiniciar
+        </button>
+      </div>
     </section>
   );
 }

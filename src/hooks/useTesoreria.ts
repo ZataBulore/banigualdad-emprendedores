@@ -4,6 +4,7 @@ import type {
   Centro,
   CobroSemanal,
   ConfiguracionCes,
+  ConfiguracionSeguridad,
   Emprendedor,
   EstadoAsistencia,
   EstadoPago,
@@ -61,6 +62,11 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
         ...(state.configuracion?.ces?.montosPorCredito ?? {}),
       },
     },
+    seguridad: {
+      ...configuracionInicial.seguridad,
+      ...(state.configuracion?.seguridad ?? {}),
+      correosAutorizados: state.configuracion?.seguridad?.correosAutorizados ?? configuracionInicial.seguridad.correosAutorizados,
+    },
   };
 
   return {
@@ -89,12 +95,14 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       ...(state.cobros ?? []).filter((cobro) => !cobrosIniciales.has(cobro.id)),
     ].map((cobro) => ({
       ...cobro,
+      fechaAtraso: cobro.fechaAtraso ?? "",
       referenciaPago: cobro.referenciaPago ?? "",
     })),
     pagosCes: state.pagosCes?.length
       ? state.pagosCes.map((pago) => ({
           ...pago,
           fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
+          fechaAtraso: pago.fechaAtraso ?? "",
           referenciaPago: pago.referenciaPago ?? "",
         }))
       : crearPagosCes(state.emprendedores, configuracion),
@@ -207,6 +215,20 @@ export const useTesoreria = () => {
     });
   };
 
+  const updateConfiguracionSeguridad = (patch: Partial<ConfiguracionSeguridad>) => {
+    setState((current) => ({
+      ...current,
+      configuracion: {
+        ...current.configuracion,
+        seguridad: {
+          ...current.configuracion.seguridad,
+          ...patch,
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const recalcularPagosCes = () => {
     setState((current) => ({
       ...current,
@@ -235,6 +257,7 @@ export const useTesoreria = () => {
     updateCobro(id, {
       montoPagado: cobro.totalEsperado,
       estadoPago: "pagado",
+      fechaAtraso: "",
       fechaPago: new Date().toISOString().slice(0, 10),
       confirmadoPorTesorero: true,
     });
@@ -247,6 +270,7 @@ export const useTesoreria = () => {
     updateCes(id, {
       montoPagado: pago.totalEsperado,
       estadoPago: "pagado",
+      fechaAtraso: "",
       fechaPago: new Date().toISOString().slice(0, 10),
       confirmadoPorTesorero: true,
     });
@@ -262,6 +286,8 @@ export const useTesoreria = () => {
       patch.montoPagado = 0;
       patch.confirmadoPorTesorero = false;
     }
+
+    patch.fechaAtraso = estadoPago === "atrasado" ? new Date().toISOString() : "";
 
     if (estadoPago === "pagado") {
       patch.montoPagado = cobro.totalEsperado;
@@ -283,6 +309,8 @@ export const useTesoreria = () => {
       patch.confirmadoPorTesorero = false;
     }
 
+    patch.fechaAtraso = estadoPago === "atrasado" ? new Date().toISOString() : "";
+
     if (estadoPago === "pagado") {
       patch.montoPagado = pago.totalEsperado;
       patch.fechaPago = new Date().toISOString().slice(0, 10);
@@ -302,6 +330,7 @@ export const useTesoreria = () => {
     updateCobro(id, {
       montoPagado,
       estadoPago,
+      fechaAtraso: "",
       confirmadoPorTesorero: estadoPago === "pagado",
       fechaPago: montoPagado > 0 ? cobro.fechaPago || new Date().toISOString().slice(0, 10) : "",
     });
@@ -317,6 +346,7 @@ export const useTesoreria = () => {
     updateCes(id, {
       montoPagado,
       estadoPago,
+      fechaAtraso: "",
       confirmadoPorTesorero: estadoPago === "pagado",
       fechaPago: montoPagado > 0 ? pago.fechaPago || new Date().toISOString().slice(0, 10) : "",
     });
@@ -347,6 +377,7 @@ export const useTesoreria = () => {
           ...cobro,
           montoPagado: cobro.totalEsperado,
           estadoPago: "pagado",
+          fechaAtraso: "",
           fechaPago: detail.fechaPago,
           metodoPago: detail.metodoPago,
           referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
@@ -454,6 +485,7 @@ export const useTesoreria = () => {
     updatePeriodo,
     updateEmprendedor,
     updateConfiguracionCes,
+    updateConfiguracionSeguridad,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
