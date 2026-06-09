@@ -41,10 +41,15 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       ...emprendedor,
       whatsapp: emprendedor.whatsapp ?? "",
     })),
+    cobros: state.cobros.map((cobro) => ({
+      ...cobro,
+      referenciaPago: cobro.referenciaPago ?? "",
+    })),
     pagosCes: state.pagosCes?.length
       ? state.pagosCes.map((pago) => ({
           ...pago,
           fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
+          referenciaPago: pago.referenciaPago ?? "",
         }))
       : crearPagosCes(state.emprendedores, configuracion),
   };
@@ -272,13 +277,39 @@ export const useTesoreria = () => {
 
   const actualizarDetalle = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
   ) => updateCobro(id, detail);
 
   const actualizarDetalleCes = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
   ) => updateCes(id, detail);
+
+  const registrarPagoMultiple = (
+    ids: string[],
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; observacion?: string },
+  ) => {
+    const selected = new Set(ids);
+
+    setState((current) => ({
+      ...current,
+      cobros: current.cobros.map((cobro) => {
+        if (!selected.has(cobro.id)) return cobro;
+
+        return {
+          ...cobro,
+          montoPagado: cobro.totalEsperado,
+          estadoPago: "pagado",
+          fechaPago: detail.fechaPago,
+          metodoPago: detail.metodoPago,
+          referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
+          observacion: detail.observacion?.trim() || cobro.observacion,
+          confirmadoPorTesorero: true,
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
 
   const resetear = () => setState(tesoreriaInicial);
 
@@ -305,6 +336,7 @@ export const useTesoreria = () => {
     registrarMontoCes,
     actualizarDetalle,
     actualizarDetalleCes,
+    registrarPagoMultiple,
     importar,
     resetear,
   };

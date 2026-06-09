@@ -33,6 +33,7 @@ export const crearPagosCes = (
     estadoPago: "pendiente" as const,
     fechaPago: "",
     metodoPago: "" as const,
+    referenciaPago: "",
     observacion: "",
     confirmadoPorTesorero: false,
   }));
@@ -112,6 +113,7 @@ export const tesoreriaInicial: TesoreriaState = {
     atraso: 0,
     fechaPago: "",
     metodoPago: "",
+    referenciaPago: "",
     observacion: "",
     confirmadoPorTesorero: false,
   })),

@@ -40,6 +40,7 @@ export interface CobroSemanal {
   atraso: number;
   fechaPago: string;
   metodoPago: MetodoPago;
+  referenciaPago: string;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }
@@ -54,6 +55,7 @@ export interface PagoCes {
   estadoPago: EstadoPago;
   fechaPago: string;
   metodoPago: MetodoPago;
+  referenciaPago: string;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }

@@ -415,6 +415,15 @@ button {
   margin-bottom: 10px;
 }
 
+.toolbar-side {
+  display: grid;
+  gap: 8px;
+}
+
+.multi-pay-button {
+  width: 100%;
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -547,6 +556,31 @@ button {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.quota-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 9px;
+  border-radius: 8px;
+  background: var(--section-soft);
+  color: var(--section-accent);
+  padding: 7px 8px;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.quota-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.quota-strip strong {
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .card-header-actions {
@@ -696,6 +730,71 @@ button {
   margin-top: 5px;
   padding: 0 9px;
   font-size: 0.84rem;
+}
+
+.receipt-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fbfbfd;
+  padding: 9px;
+}
+
+.receipt-box.cash {
+  border-color: rgba(52, 199, 89, 0.28);
+  background: #f0fbf3;
+}
+
+.receipt-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.receipt-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.cash-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  border-color: rgba(52, 199, 89, 0.3);
+  background: #e9f9ee;
+  color: #248a3d;
+  padding: 0 9px;
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.reference-input {
+  display: block;
+}
+
+.reference-input input {
+  min-height: 38px;
+  margin-top: 5px;
+  padding: 0 9px;
+  font-size: 0.84rem;
+}
+
+.reference-input input:disabled {
+  opacity: 1;
+  background: #f5fff7;
+  color: #248a3d;
+  -webkit-text-fill-color: #248a3d;
+  font-weight: 760;
 }
 
 .note-input {
@@ -1037,6 +1136,7 @@ button {
 }
 
 .modal-field input,
+.modal-field select,
 .modal-field textarea {
   width: 100%;
   min-height: 40px;
@@ -1046,6 +1146,13 @@ button {
   color: var(--text);
   padding: 0 11px;
   outline: none;
+}
+
+.modal-field input:disabled {
+  opacity: 1;
+  background: var(--surface-muted);
+  color: var(--muted);
+  -webkit-text-fill-color: var(--muted);
 }
 
 .modal-field textarea {
@@ -1061,9 +1168,77 @@ button {
 }
 
 .modal-field.invalid input,
+.modal-field.invalid select,
 .modal-field.invalid textarea {
   border-color: var(--danger);
   background: #fff8f7;
+}
+
+.multi-pay-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.multi-pay-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-radius: 8px;
+  background: var(--section-soft);
+  color: var(--section-accent);
+  padding: 9px 10px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.multi-pay-list-header strong {
+  color: var(--text);
+}
+
+.quota-option {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 9px;
+}
+
+.quota-option.active {
+  border-color: var(--section-accent);
+  background: var(--section-soft);
+}
+
+.quota-option input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--section-accent);
+}
+
+.quota-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.quota-option strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.quota-option small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.quota-option b {
+  color: var(--text);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .modal-field.invalid small,
@@ -1374,6 +1549,17 @@ button {
   .toolbar {
     grid-template-columns: minmax(260px, 360px) 1fr;
     align-items: start;
+  }
+
+  .toolbar-side {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .multi-pay-button {
+    width: auto;
   }
 
   .tabbar {

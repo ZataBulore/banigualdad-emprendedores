@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Pencil,
   Phone,
+  ReceiptText,
   RotateCcw,
   Search,
   Send,
@@ -224,6 +225,7 @@ function App() {
     registrarMontoCes,
     actualizarDetalle,
     actualizarDetalleCes,
+    registrarPagoMultiple,
     importar,
     resetear,
   } = useTesoreria();
@@ -233,6 +235,7 @@ function App() {
   const [busqueda, setBusqueda] = useState("");
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
   const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
+  const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const periodo = state.periodos.find((item) => item.id === periodoId) ?? state.periodos[0];
@@ -252,6 +255,7 @@ function App() {
         cobro.estadoPago,
         cobro.fechaPago,
         cobro.metodoPago,
+        cobro.referenciaPago,
         cobro.observacion,
       ]);
 
@@ -271,6 +275,7 @@ function App() {
         pago.estadoPago,
         pago.fechaPago,
         pago.metodoPago,
+        pago.referenciaPago,
         pago.observacion,
       ]);
 
@@ -303,7 +308,7 @@ function App() {
 
   const exportarCsv = () => {
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "observacion"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -322,6 +327,7 @@ function App() {
           cobro.estadoPago,
           cobro.fechaPago,
           cobro.metodoPago,
+          cobro.referenciaPago,
           cobro.observacion,
         ];
       }),
@@ -342,6 +348,7 @@ function App() {
           pago.estadoPago,
           pago.fechaPago,
           pago.metodoPago,
+          pago.referenciaPago,
           pago.observacion,
         ];
       }),
@@ -457,16 +464,21 @@ function App() {
               onChange={setBusqueda}
               placeholder="Buscar nombre, RUT o WhatsApp"
             />
-            <div className="chips" role="list" aria-label="Filtrar por estado">
-              {estadoOptions.map((estado) => (
-                <button
-                  key={estado}
-                  className={filtroEstado === estado ? "chip active" : "chip"}
-                  onClick={() => setFiltroEstado(estado)}
-                >
-                  {estado === "todos" ? "Todos" : estadoLabels[estado]}
-                </button>
-              ))}
+            <div className="toolbar-side">
+              <button className="primary-button multi-pay-button" onClick={() => setPagoMultipleAbierto(true)}>
+                <ReceiptText size={18} /> Pago multiple
+              </button>
+              <div className="chips" role="list" aria-label="Filtrar por estado">
+                {estadoOptions.map((estado) => (
+                  <button
+                    key={estado}
+                    className={filtroEstado === estado ? "chip active" : "chip"}
+                    onClick={() => setFiltroEstado(estado)}
+                  >
+                    {estado === "todos" ? "Todos" : estadoLabels[estado]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -485,6 +497,7 @@ function App() {
                 <CobroCard
                   key={cobro.id}
                   cobro={cobro}
+                  periodo={periodo}
                   persona={persona}
                   onPagar={() => marcarPagado(cobro.id)}
                   onEstado={(estado) => cambiarEstado(cobro.id, estado)}
@@ -670,6 +683,19 @@ function App() {
           }}
         />
       )}
+
+      {pagoMultipleAbierto && (
+        <PagoMultipleModal
+          state={state}
+          personas={emprendedoresFiltrados.length ? emprendedoresFiltrados : state.emprendedores}
+          defaultPersonaId={personaVisible?.id}
+          onClose={() => setPagoMultipleAbierto(false)}
+          onSave={(ids, detail) => {
+            registrarPagoMultiple(ids, detail);
+            setPagoMultipleAbierto(false);
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -762,6 +788,7 @@ function SearchInput({
 
 function CobroCard({
   cobro,
+  periodo,
   persona,
   onPagar,
   onEstado,
@@ -771,15 +798,17 @@ function CobroCard({
   onPersona,
 }: {
   cobro: CobroSemanal;
+  periodo?: Periodo;
   persona: Emprendedor;
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
   onEditarPersona: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
+  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "" });
 
   return (
     <article className={`payment-card ${cobro.estadoPago}`}>
@@ -795,6 +824,11 @@ function CobroCard({
           <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
         </div>
       </header>
+
+      <div className="quota-strip">
+        <span><CalendarDays size={15} /> Cuota {periodo?.numeroCuota ?? cobro.periodoId}</span>
+        <strong>Vence {periodo ? formatDate(periodo.fechaVencimiento) : "sin fecha"}</strong>
+      </div>
 
       <div className="money-grid">
         <div>
@@ -845,13 +879,40 @@ function CobroCard({
         </label>
         <label>
           <span>Pago</span>
-          <select value={cobro.metodoPago} onChange={(event) => onDetalle({ metodoPago: event.target.value as MetodoPago })}>
+          <select
+            value={cobro.metodoPago}
+            onChange={(event) => {
+              const metodoPago = event.target.value as MetodoPago;
+              onDetalle({
+                metodoPago,
+                referenciaPago: metodoPago === "efectivo" ? "" : cobro.referenciaPago,
+              });
+            }}
+          >
             {metodoOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>
       </div>
+
+      <section className={cobro.metodoPago === "efectivo" ? "receipt-box cash" : "receipt-box"}>
+        <div className="receipt-heading">
+          <span><ReceiptText size={15} /> Comprobante</span>
+          <button type="button" className="cash-toggle" onClick={marcarEfectivo}>
+            <Check size={15} /> Efectivo
+          </button>
+        </div>
+        <label className="reference-input">
+          <span>N° transferencia o transaccion</span>
+          <input
+            value={cobro.referenciaPago}
+            onChange={(event) => onDetalle({ referenciaPago: event.target.value })}
+            placeholder={cobro.metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: 348921, BancoEstado, comprobante"}
+            disabled={cobro.metodoPago === "efectivo"}
+          />
+        </label>
+      </section>
 
       <label className="note-input">
         <span>Observacion</span>
@@ -1016,11 +1077,12 @@ function CesCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
   onEditarPersona: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(pago.totalEsperado - pago.montoPagado, 0);
+  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "" });
 
   return (
     <article className={`payment-card ces-card ${pago.estadoPago}`}>
@@ -1082,13 +1144,40 @@ function CesCard({
         </label>
         <label>
           <span>Pago</span>
-          <select value={pago.metodoPago} onChange={(event) => onDetalle({ metodoPago: event.target.value as MetodoPago })}>
+          <select
+            value={pago.metodoPago}
+            onChange={(event) => {
+              const metodoPago = event.target.value as MetodoPago;
+              onDetalle({
+                metodoPago,
+                referenciaPago: metodoPago === "efectivo" ? "" : pago.referenciaPago,
+              });
+            }}
+          >
             {metodoOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>
       </div>
+
+      <section className={pago.metodoPago === "efectivo" ? "receipt-box cash" : "receipt-box"}>
+        <div className="receipt-heading">
+          <span><ReceiptText size={15} /> Comprobante</span>
+          <button type="button" className="cash-toggle" onClick={marcarEfectivo}>
+            <Check size={15} /> Efectivo
+          </button>
+        </div>
+        <label className="reference-input">
+          <span>N° transferencia o transaccion</span>
+          <input
+            value={pago.referenciaPago}
+            onChange={(event) => onDetalle({ referenciaPago: event.target.value })}
+            placeholder={pago.metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: 348921, BancoEstado, comprobante"}
+            disabled={pago.metodoPago === "efectivo"}
+          />
+        </label>
+      </section>
 
       <label className="note-input">
         <span>Observacion</span>
@@ -1384,6 +1473,179 @@ function PersonaEditModal({
           <button className="secondary-button" onClick={onClose}>Cancelar</button>
           <button className="primary-button" onClick={handleSave}>
             <Check size={18} /> Guardar
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function PagoMultipleModal({
+  state,
+  personas,
+  defaultPersonaId,
+  onClose,
+  onSave,
+}: {
+  state: TesoreriaState;
+  personas: Emprendedor[];
+  defaultPersonaId?: string;
+  onClose: () => void;
+  onSave: (
+    ids: string[],
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; observacion?: string },
+  ) => void;
+}) {
+  const firstPersonaId = defaultPersonaId && personas.some((persona) => persona.id === defaultPersonaId)
+    ? defaultPersonaId
+    : personas[0]?.id ?? "";
+  const [personaId, setPersonaId] = useState(firstPersonaId);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [fechaPago, setFechaPago] = useState(new Date().toISOString().slice(0, 10));
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>("transferencia");
+  const [referenciaPago, setReferenciaPago] = useState("");
+  const [observacion, setObservacion] = useState("");
+  const [touched, setTouched] = useState(false);
+
+  const cobrosPersona = state.cobros
+    .filter((cobro) => cobro.emprendedorId === personaId)
+    .map((cobro) => ({
+      cobro,
+      periodo: state.periodos.find((periodo) => periodo.id === cobro.periodoId),
+    }))
+    .sort((a, b) => (a.periodo?.numeroCuota ?? 0) - (b.periodo?.numeroCuota ?? 0));
+  const selectedCobros = cobrosPersona.filter(({ cobro }) => selectedIds.includes(cobro.id));
+  const totalSeleccionado = selectedCobros.reduce((acc, { cobro }) => acc + cobro.totalEsperado, 0);
+  const requiresReference = metodoPago !== "efectivo";
+  const hasErrors = !personaId || !selectedIds.length || !fechaPago || (requiresReference && !referenciaPago.trim());
+
+  const changePersona = (value: string) => {
+    setPersonaId(value);
+    setSelectedIds([]);
+    setTouched(false);
+  };
+
+  const toggleCobro = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  };
+
+  const handleMetodo = (value: MetodoPago) => {
+    setMetodoPago(value);
+    if (value === "efectivo") setReferenciaPago("");
+  };
+
+  const handleSave = () => {
+    setTouched(true);
+    if (hasErrors) return;
+
+    onSave(selectedIds, {
+      fechaPago,
+      metodoPago,
+      referenciaPago,
+      observacion,
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="multi-pay-title">
+        <header>
+          <div>
+            <p className="eyebrow">Pago agrupado</p>
+            <h2 id="multi-pay-title">Registrar varias cuotas</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar pago multiple">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="modal-grid">
+          <ModalField label="Persona">
+            <select value={personaId} onChange={(event) => changePersona(event.target.value)}>
+              {personas.map((persona) => (
+                <option key={persona.id} value={persona.id}>
+                  {persona.nombre} · {persona.rut}
+                </option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Fecha de pago" error={touched && !fechaPago ? "Selecciona la fecha." : undefined}>
+            <input type="date" value={fechaPago} onChange={(event) => setFechaPago(event.target.value)} />
+          </ModalField>
+
+          <ModalField label="Metodo">
+            <select value={metodoPago} onChange={(event) => handleMetodo(event.target.value as MetodoPago)}>
+              {metodoOptions.filter((option) => option.value).map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField
+            label="Referencia compartida"
+            error={touched && requiresReference && !referenciaPago.trim() ? "Ingresa el numero o descripcion del comprobante." : undefined}
+            hint={metodoPago === "efectivo" ? "Para efectivo no necesitas numero de transferencia." : "Se copiara en cada cuota seleccionada."}
+          >
+            <input
+              value={referenciaPago}
+              onChange={(event) => setReferenciaPago(event.target.value)}
+              placeholder={metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: transferencia 348921"}
+              disabled={metodoPago === "efectivo"}
+            />
+          </ModalField>
+        </div>
+
+        <section className="multi-pay-list" aria-label="Cuotas disponibles">
+          <div className="multi-pay-list-header">
+            <span>Cuotas a pagar</span>
+            <strong>{formatCurrency(totalSeleccionado)}</strong>
+          </div>
+          {cobrosPersona.map(({ cobro, periodo }) => (
+            <label key={cobro.id} className={selectedIds.includes(cobro.id) ? "quota-option active" : "quota-option"}>
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(cobro.id)}
+                onChange={() => toggleCobro(cobro.id)}
+              />
+              <span>
+                <strong>Cuota {periodo?.numeroCuota ?? cobro.periodoId}</strong>
+                <small>Vence {periodo ? formatDate(periodo.fechaVencimiento) : "sin fecha"} · {estadoLabels[cobro.estadoPago]}</small>
+              </span>
+              <b>{formatCurrency(cobro.totalEsperado)}</b>
+            </label>
+          ))}
+          {!cobrosPersona.length && <p className="empty-state">Esta persona aun no tiene cuotas cargadas.</p>}
+        </section>
+
+        <ModalField label="Observacion para estas cuotas">
+          <textarea
+            value={observacion}
+            onChange={(event) => setObservacion(event.target.value)}
+            rows={2}
+            placeholder="Opcional"
+          />
+        </ModalField>
+
+        <div className="modal-info">
+          <ReceiptText size={18} />
+          <span>
+            El comprobante y la fecha se guardaran en cada cuota seleccionada. Las cuotas quedaran marcadas como pagadas.
+          </span>
+        </div>
+
+        {touched && hasErrors && (
+          <div className="modal-error" role="alert">
+            Selecciona al menos una cuota y completa los datos del comprobante.
+          </div>
+        )}
+
+        <footer>
+          <button className="secondary-button" onClick={onClose}>Cancelar</button>
+          <button className="primary-button" onClick={handleSave} disabled={!selectedIds.length}>
+            <Check size={18} /> Registrar {selectedIds.length || ""}
           </button>
         </footer>
       </section>
