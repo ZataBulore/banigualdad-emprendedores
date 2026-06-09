@@ -605,7 +605,7 @@ function App() {
             />
             <div className="toolbar-side">
               <button className="primary-button multi-pay-button" onClick={() => setPagoMultipleAbierto(true)}>
-                <ReceiptText size={18} /> Pago por persona
+                <ReceiptText size={18} /> Adelantar pagos
               </button>
               <div className="chips" role="list" aria-label="Filtrar por estado">
                 {estadoOptions.map((estado) => (
@@ -2052,8 +2052,8 @@ function PagoMultipleModal({
       <section className="edit-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="multi-pay-title">
         <header>
           <div>
-            <p className="eyebrow">Pago por persona</p>
-            <h2 id="multi-pay-title">Registrar pago agrupado</h2>
+            <p className="eyebrow">Adelanto de pagos</p>
+            <h2 id="multi-pay-title">Registrar pagos extra</h2>
           </div>
           <button className="icon-button" onClick={onClose} aria-label="Cerrar pago por persona">
             <X size={20} />
@@ -2071,7 +2071,7 @@ function PagoMultipleModal({
             <span>1</span>
             <div>
               <strong>Persona que paga</strong>
-              <small>El pago agrupado siempre corresponde a una sola persona.</small>
+              <small>El adelanto o pago extra siempre corresponde a una sola persona.</small>
             </div>
           </div>
           <ModalField label="Persona">
