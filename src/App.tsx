@@ -391,6 +391,7 @@ function App() {
     marcarCesPagado,
     cambiarEstadoCes,
     registrarMonto,
+    registrarSeguro,
     registrarMontoCes,
     actualizarDetalle,
     actualizarDetalleCes,
@@ -841,6 +842,7 @@ function App() {
                   onPagar={() => marcarPagado(cobro.id)}
                   onEstado={(estado) => cambiarEstado(cobro.id, estado)}
                   onMonto={(monto) => registrarMonto(cobro.id, monto)}
+                  onSeguro={(seguro) => registrarSeguro(cobro.id, seguro)}
                   onDetalle={(detail) => actualizarDetalle(cobro.id, detail)}
                   onEditarPersona={() => setPersonaEditando(persona)}
                   onPersona={() => {
@@ -1238,6 +1240,7 @@ function CobroCard({
   onPagar,
   onEstado,
   onMonto,
+  onSeguro,
   onDetalle,
   onEditarPersona,
   onPersona,
@@ -1248,6 +1251,7 @@ function CobroCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
+  onSeguro: (seguro: number) => void;
   onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
   onEditarPersona: () => void;
   onPersona: () => void;
@@ -1284,10 +1288,18 @@ function CobroCard({
           <span>Cuota</span>
           <strong>{formatCurrency(cobro.cuota)}</strong>
         </div>
-        <div>
+        <label className="money-edit-field">
           <span>Seguro</span>
-          <strong>{formatCurrency(cobro.seguro)}</strong>
-        </div>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="0"
+            step="1"
+            value={cobro.seguro || ""}
+            onChange={(event) => onSeguro(Number(event.target.value || 0))}
+            placeholder="0"
+          />
+        </label>
         <div>
           <span>Total</span>
           <strong>{formatCurrency(cobro.totalEsperado)}</strong>
