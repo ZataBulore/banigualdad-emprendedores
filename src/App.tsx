@@ -466,7 +466,7 @@ function App() {
             />
             <div className="toolbar-side">
               <button className="primary-button multi-pay-button" onClick={() => setPagoMultipleAbierto(true)}>
-                <ReceiptText size={18} /> Pago multiple
+                <ReceiptText size={18} /> Pago por persona
               </button>
               <div className="chips" role="list" aria-label="Filtrar por estado">
                 {estadoOptions.map((estado) => (
@@ -1518,6 +1518,13 @@ function PagoMultipleModal({
   const totalSeleccionado = selectedCobros.reduce((acc, { cobro }) => acc + cobro.totalEsperado, 0);
   const requiresReference = metodoPago !== "efectivo";
   const hasErrors = !personaId || !selectedIds.length || !fechaPago || (requiresReference && !referenciaPago.trim());
+  const personaSeleccionada = personas.find((persona) => persona.id === personaId);
+  const comprobanteLabel =
+    metodoPago === "efectivo"
+      ? "pago en efectivo"
+      : metodoPago === "transferencia"
+        ? "transferencia"
+        : "comprobante";
 
   const changePersona = (value: string) => {
     setPersonaId(value);
@@ -1553,15 +1560,28 @@ function PagoMultipleModal({
       <section className="edit-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="multi-pay-title">
         <header>
           <div>
-            <p className="eyebrow">Pago agrupado</p>
-            <h2 id="multi-pay-title">Registrar varias cuotas</h2>
+            <p className="eyebrow">Pago por persona</p>
+            <h2 id="multi-pay-title">Registrar pago agrupado</h2>
           </div>
-          <button className="icon-button" onClick={onClose} aria-label="Cerrar pago multiple">
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar pago por persona">
             <X size={20} />
           </button>
         </header>
 
-        <div className="modal-grid">
+        <div className="payment-steps">
+          <span className="active">1 Persona</span>
+          <span>2 Cuotas</span>
+          <span>3 Comprobante</span>
+        </div>
+
+        <section className="payment-step-card">
+          <div className="payment-step-title">
+            <span>1</span>
+            <div>
+              <strong>Persona que paga</strong>
+              <small>El pago agrupado siempre corresponde a una sola persona.</small>
+            </div>
+          </div>
           <ModalField label="Persona">
             <select value={personaId} onChange={(event) => changePersona(event.target.value)}>
               {personas.map((persona) => (
@@ -1571,48 +1591,18 @@ function PagoMultipleModal({
               ))}
             </select>
           </ModalField>
+        </section>
 
-          <ModalField label="Fecha de pago" error={touched && !fechaPago ? "Selecciona la fecha." : undefined}>
-            <input type="date" value={fechaPago} onChange={(event) => setFechaPago(event.target.value)} />
-          </ModalField>
-
-          <ModalField label="Metodo">
-            <select value={metodoPago} onChange={(event) => handleMetodo(event.target.value as MetodoPago)}>
-              {metodoOptions.filter((option) => option.value).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </ModalField>
-
-          <section className={touched && requiresReference && !referenciaPago.trim() ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
-            <div className="receipt-heading">
-              <span><ReceiptText size={15} /> Comprobante</span>
-              <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
-                <Check size={15} /> Efectivo
-              </button>
+        <section className="payment-step-card multi-pay-list" aria-label="Cuotas disponibles">
+          <div className="payment-step-title">
+            <span>2</span>
+            <div>
+              <strong>Cuotas que cubre este pago</strong>
+              <small>Selecciona una o varias cuotas de {personaSeleccionada?.nombre ?? "la persona"}.</small>
             </div>
-            <label className="reference-input">
-              <span>Referencia compartida</span>
-              <input
-                value={referenciaPago}
-                onChange={(event) => setReferenciaPago(event.target.value)}
-                placeholder={metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: transferencia 348921"}
-                disabled={metodoPago === "efectivo"}
-              />
-              <small>
-                {touched && requiresReference && !referenciaPago.trim()
-                  ? "Ingresa el numero o descripcion del comprobante."
-                  : metodoPago === "efectivo"
-                    ? "Para efectivo no necesitas numero de transferencia."
-                    : "Se copiara en cada cuota seleccionada."}
-              </small>
-            </label>
-          </section>
-        </div>
-
-        <section className="multi-pay-list" aria-label="Cuotas disponibles">
+          </div>
           <div className="multi-pay-list-header">
-            <span>Cuotas a pagar</span>
+            <span>{selectedIds.length || 0} cuota{selectedIds.length === 1 ? "" : "s"} seleccionada{selectedIds.length === 1 ? "" : "s"}</span>
             <strong>{formatCurrency(totalSeleccionado)}</strong>
           </div>
           {cobrosPersona.map(({ cobro, periodo }) => (
@@ -1632,19 +1622,68 @@ function PagoMultipleModal({
           {!cobrosPersona.length && <p className="empty-state">Esta persona aun no tiene cuotas cargadas.</p>}
         </section>
 
-        <ModalField label="Observacion para estas cuotas">
-          <textarea
-            value={observacion}
-            onChange={(event) => setObservacion(event.target.value)}
-            rows={2}
-            placeholder="Opcional"
-          />
-        </ModalField>
+        <section className="payment-step-card">
+          <div className="payment-step-title">
+            <span>3</span>
+            <div>
+              <strong>Comprobante que se asigna</strong>
+              <small>Este mismo dato quedara guardado en todas las cuotas seleccionadas.</small>
+            </div>
+          </div>
 
-        <div className="modal-info">
+          <div className="modal-grid">
+            <ModalField label="Fecha de pago" error={touched && !fechaPago ? "Selecciona la fecha." : undefined}>
+              <input type="date" value={fechaPago} onChange={(event) => setFechaPago(event.target.value)} />
+            </ModalField>
+
+            <ModalField label="Metodo">
+              <select value={metodoPago} onChange={(event) => handleMetodo(event.target.value as MetodoPago)}>
+                {metodoOptions.filter((option) => option.value).map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </ModalField>
+          </div>
+
+          <section className={touched && requiresReference && !referenciaPago.trim() ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
+            <div className="receipt-heading">
+              <span><ReceiptText size={15} /> Comprobante</span>
+              <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
+                <Check size={15} /> Efectivo
+              </button>
+            </div>
+            <label className="reference-input">
+              <span>{metodoPago === "transferencia" ? "N° transferencia" : "Referencia compartida"}</span>
+              <input
+                value={referenciaPago}
+                onChange={(event) => setReferenciaPago(event.target.value)}
+                placeholder={metodoPago === "efectivo" ? "Pago en efectivo" : "Ej: transferencia 348921"}
+                disabled={metodoPago === "efectivo"}
+              />
+              <small>
+                {touched && requiresReference && !referenciaPago.trim()
+                  ? "Ingresa el numero o descripcion del comprobante."
+                  : metodoPago === "efectivo"
+                    ? "Para efectivo no necesitas numero de transferencia."
+                    : "Se copiara en cada cuota seleccionada."}
+              </small>
+            </label>
+          </section>
+
+          <ModalField label="Observacion para estas cuotas">
+            <textarea
+              value={observacion}
+              onChange={(event) => setObservacion(event.target.value)}
+              rows={2}
+              placeholder="Opcional"
+            />
+          </ModalField>
+        </section>
+
+        <div className="modal-info payment-summary">
           <ReceiptText size={18} />
           <span>
-            El comprobante y la fecha se guardaran en cada cuota seleccionada. Las cuotas quedaran marcadas como pagadas.
+            Se registrara {comprobanteLabel} para {selectedIds.length || 0} cuota{selectedIds.length === 1 ? "" : "s"} de {personaSeleccionada?.nombre ?? "la persona"} por {formatCurrency(totalSeleccionado)}.
           </span>
         </div>
 
@@ -1657,7 +1696,7 @@ function PagoMultipleModal({
         <footer>
           <button className="secondary-button" onClick={onClose}>Cancelar</button>
           <button className="primary-button" onClick={handleSave} disabled={!selectedIds.length}>
-            <Check size={18} /> Registrar {selectedIds.length || ""}
+            <Check size={18} /> Guardar pago
           </button>
         </footer>
       </section>

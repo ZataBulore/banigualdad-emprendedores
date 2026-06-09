@@ -1190,6 +1190,73 @@ button {
   background: #fff8f7;
 }
 
+.payment-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.payment-steps span {
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  padding: 7px 6px;
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.payment-steps .active {
+  background: var(--section-soft);
+  color: var(--section-accent);
+}
+
+.payment-step-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fbfbfd;
+  padding: 10px;
+}
+
+.payment-step-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.payment-step-title > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--section-accent);
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.payment-step-title div {
+  display: grid;
+  gap: 2px;
+}
+
+.payment-step-title strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.payment-step-title small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
 .multi-pay-list {
   display: grid;
   gap: 7px;
@@ -1264,6 +1331,7 @@ button {
 
 .modal-receipt {
   margin-top: 0;
+  background: var(--surface);
 }
 
 .modal-receipt.invalid {
@@ -1302,6 +1370,10 @@ button {
 
 .modal-error {
   background: #ffecea;
+}
+
+.payment-summary {
+  font-size: 0.84rem;
 }
 
 .edit-modal footer {
