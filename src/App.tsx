@@ -1188,7 +1188,7 @@ function LoginGate({
         </div>
       </section>
       <footer className="login-footer">
-        Version {APP_VERSION} - Desarrollador organizacional Zata Studio Lab
+        Version {APP_VERSION} - Zata Studio Lab
       </footer>
     </main>
   );
