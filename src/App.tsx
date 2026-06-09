@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  Trash2,
   Upload,
   Users,
   WalletCards,
@@ -56,6 +57,8 @@ const personaEstadoLabels: Record<EstadoPersona, string> = {
   activa: "Activa",
   de_baja: "De baja",
 };
+
+const confirmarAccionCritica = (mensaje: string) => window.confirm(mensaje);
 
 const metodoOptions: { label: string; value: MetodoPago }[] = [
   { label: "Metodo", value: "" },
@@ -266,6 +269,7 @@ function App() {
     registrarPagoMultiple,
     crearReunion,
     updateReunion,
+    eliminarReunion,
     updateAsistencia,
     importar,
     resetear,
@@ -471,10 +475,21 @@ function App() {
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const confirmed = confirmarAccionCritica("Importar este respaldo reemplazara los datos guardados actualmente en este navegador. Deseas continuar?");
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
 
     const content = await file.text();
     importar(JSON.parse(content) as TesoreriaState);
     event.target.value = "";
+  };
+
+  const handleReset = () => {
+    const confirmed = confirmarAccionCritica("Reiniciar borrara los cambios guardados en este navegador y volvera a los datos iniciales. Deseas continuar?");
+    if (!confirmed) return;
+    resetear();
   };
 
   return (
@@ -736,6 +751,11 @@ function App() {
             setReunionId(nextId);
           }}
           onReunion={updateReunion}
+          onEliminarReunion={(id) => {
+            const remaining = state.reuniones.filter((reunion) => reunion.id !== id);
+            eliminarReunion(id);
+            setReunionId(remaining[0]?.id ?? "");
+          }}
           asistencias={asistenciasFiltradas}
           totals={asistenciaTotales}
           busqueda={busqueda}
@@ -774,7 +794,7 @@ function App() {
             <RotateCcw size={24} />
             <h2>Reiniciar datos locales</h2>
             <p>Vuelve al periodo inicial cargado desde la captura. Esto limpia los cambios guardados en este navegador.</p>
-            <button className="danger-button" onClick={resetear}>
+            <button className="danger-button" onClick={handleReset}>
               <RotateCcw size={18} /> Reiniciar
             </button>
           </div>
@@ -1340,6 +1360,7 @@ function AsistenciasPanel({
   onReunionActiva,
   onCrearReunion,
   onReunion,
+  onEliminarReunion,
   asistencias,
   totals,
   busqueda,
@@ -1354,6 +1375,7 @@ function AsistenciasPanel({
   onReunionActiva: (id: string) => void;
   onCrearReunion: (payload: { titulo: string; fecha: string; lugar?: string; observacion?: string; acta?: string }) => void;
   onReunion: (id: string, patch: Partial<Omit<Reunion, "id" | "asistencias">>) => void;
+  onEliminarReunion: (id: string) => void;
   asistencias: Reunion["asistencias"];
   totals: { total: number; presente: number; ausente: number; justificado: number; pendiente: number };
   busqueda: string;
@@ -1377,6 +1399,13 @@ function AsistenciasPanel({
     setFecha(today);
     setLugar("");
     setActa("");
+  };
+
+  const eliminarActual = () => {
+    if (!reunionActiva) return;
+    const confirmed = confirmarAccionCritica(`Eliminar "${reunionActiva.titulo}"? Se borraran su asistencia y acta.`);
+    if (!confirmed) return;
+    onEliminarReunion(reunionActiva.id);
   };
 
   return (
@@ -1433,7 +1462,12 @@ function AsistenciasPanel({
                     <h2>{reunionActiva.titulo}</h2>
                     <span>{formatDate(reunionActiva.fecha)} · {reunionActiva.lugar || "Sin lugar"}</span>
                   </div>
-                  <strong>{totals.presente}/{totals.total}</strong>
+                  <div className="meeting-title-actions">
+                    <strong>{totals.presente}/{totals.total}</strong>
+                    <button className="danger-icon-button" onClick={eliminarActual} aria-label={`Eliminar ${reunionActiva.titulo}`}>
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
                 </div>
                 <div className="attendance-edit-grid">
                   <label>
@@ -1733,6 +1767,10 @@ function PersonaEditModal({
   const handleSave = () => {
     setTouched(true);
     if (hasErrors) return;
+    if (persona.estado !== "de_baja" && form.estado === "de_baja") {
+      const confirmed = confirmarAccionCritica(`Dar de baja a "${persona.nombre}"? La persona seguira registrada, pero quedara marcada como de baja.`);
+      if (!confirmed) return;
+    }
 
     onSave({
       ...form,

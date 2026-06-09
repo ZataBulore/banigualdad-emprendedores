@@ -374,6 +374,14 @@ export const useTesoreria = () => {
     }));
   };
 
+  const eliminarReunion = (id: string) => {
+    setState((current) => ({
+      ...current,
+      reuniones: current.reuniones.filter((reunion) => reunion.id !== id),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
+
   const updateAsistencia = (
     reunionId: string,
     emprendedorId: string,
@@ -423,6 +431,7 @@ export const useTesoreria = () => {
     registrarPagoMultiple,
     crearReunion,
     updateReunion,
+    eliminarReunion,
     updateAsistencia,
     importar,
     resetear,

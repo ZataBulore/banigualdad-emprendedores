@@ -1202,12 +1202,31 @@ button {
   font-weight: 650;
 }
 
-.attendance-meeting-title > strong {
+.meeting-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.meeting-title-actions > strong {
   border-radius: 999px;
   background: var(--section-soft);
   color: var(--section-accent);
   padding: 6px 9px;
   white-space: nowrap;
+}
+
+.danger-icon-button {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 59, 48, 0.24);
+  border-radius: 8px;
+  background: #fff1ef;
+  color: #c9342b;
 }
 
 .attendance-list {
