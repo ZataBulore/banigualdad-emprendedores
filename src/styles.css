@@ -2282,6 +2282,80 @@ button {
   white-space: nowrap;
 }
 
+.attachment-control {
+  display: grid;
+  gap: 7px;
+}
+
+.attachment-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(52, 199, 89, 0.24);
+  border-radius: 8px;
+  background: #f0fbf3;
+  color: #248a3d;
+  padding: 8px;
+}
+
+.attachment-card.empty {
+  border-color: var(--line-soft);
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
+.attachment-card strong,
+.attachment-card span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-card strong {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.attachment-card span,
+.attachment-error {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.attachment-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+}
+
+.attachment-actions input[type="file"] {
+  display: none;
+}
+
+.attachment-actions .secondary-button,
+.attachment-actions .danger-button {
+  min-height: 34px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.secondary-button.disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.danger-button.compact {
+  min-height: 34px;
+}
+
+.attachment-error {
+  color: var(--danger);
+}
+
 .modal-field.invalid small,
 .modal-error {
   color: #c9342b;

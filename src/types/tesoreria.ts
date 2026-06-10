@@ -44,6 +44,14 @@ export interface Emprendedor {
   notas?: string;
 }
 
+export interface ComprobanteAdjunto {
+  nombre: string;
+  tipo: string;
+  dataUrl: string;
+  tamano: number;
+  createdAt: string;
+}
+
 export interface CobroSemanal {
   id: string;
   periodoId: string;
@@ -58,6 +66,7 @@ export interface CobroSemanal {
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;
+  comprobanteAdjunto?: ComprobanteAdjunto;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }
@@ -74,6 +83,7 @@ export interface PagoCes {
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;
+  comprobanteAdjunto?: ComprobanteAdjunto;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }

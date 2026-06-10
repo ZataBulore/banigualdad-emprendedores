@@ -33,7 +33,7 @@ import {
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
 import { isFirebaseConfigured, signInFirebaseWithGoogleCredential, signOutFirebase } from "./services/firebase";
-import type { Centro, CobroSemanal, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
@@ -41,7 +41,7 @@ type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
-type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "observacion">;
+type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
 
@@ -71,6 +71,9 @@ const EMAIL_ADMIN_PASSWORD_HASH =
 const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 const APP_VERSION = "1.0.0";
+const MAX_COMPROBANTE_BYTES = 420 * 1024;
+const MAX_IMAGE_SIDE = 1400;
+const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -193,6 +196,83 @@ const sha256Hex = async (value: string) => {
 const verifyEmailAdminPassword = async (password: string) => {
   if (!EMAIL_ADMIN_PASSWORD_HASH) return false;
   return (await sha256Hex(password)) === EMAIL_ADMIN_PASSWORD_HASH;
+};
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No se pudo preparar la imagen."));
+    image.src = src;
+  });
+
+const compressImageFile = async (file: File) => {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(originalDataUrl);
+  const ratio = Math.min(1, MAX_IMAGE_SIDE / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * ratio));
+  const height = Math.max(1, Math.round(image.height * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("No se pudo comprimir la imagen.");
+  context.drawImage(image, 0, 0, width, height);
+
+  let quality = 0.78;
+  let dataUrl = canvas.toDataURL("image/jpeg", quality);
+  while (dataUrl.length > MAX_COMPROBANTE_BYTES * 1.37 && quality > 0.42) {
+    quality -= 0.08;
+    dataUrl = canvas.toDataURL("image/jpeg", quality);
+  }
+
+  if (dataUrl.length > MAX_COMPROBANTE_BYTES * 1.37) {
+    throw new Error("La imagen sigue siendo muy pesada. Envia una captura mas liviana o recortada.");
+  }
+
+  return {
+    dataUrl,
+    tipo: "image/jpeg",
+    tamano: Math.round((dataUrl.length * 3) / 4),
+    nombre: file.name.replace(/\.[^.]+$/, "") + ".jpg",
+  };
+};
+
+const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto> => {
+  if (file.type.startsWith("image/")) {
+    const image = await compressImageFile(file);
+    return { ...image, createdAt: new Date().toISOString() };
+  }
+
+  if (file.type !== "application/pdf") {
+    throw new Error("Solo se aceptan imagenes o PDF.");
+  }
+
+  if (file.size > MAX_COMPROBANTE_BYTES) {
+    throw new Error("El PDF supera 420 KB. Sube una version mas liviana o una captura.");
+  }
+
+  return {
+    nombre: file.name,
+    tipo: file.type,
+    dataUrl: await readFileAsDataUrl(file),
+    tamano: file.size,
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const decodeGoogleCredential = (credential: string): AuthUser => {
@@ -626,7 +706,7 @@ function App() {
     });
 
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "nombre_contacto_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "nombre_contacto_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "comprobante_adjunto", "observacion", "acta"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -651,6 +731,7 @@ function App() {
           cobro.fechaPago,
           cobro.metodoPago,
           cobro.referenciaPago,
+          cobro.comprobanteAdjunto?.nombre ?? "",
           cobro.observacion,
           "",
         ];
@@ -678,6 +759,7 @@ function App() {
           pago.fechaPago,
           pago.metodoPago,
           pago.referenciaPago,
+          pago.comprobanteAdjunto?.nombre ?? "",
           pago.observacion,
           "",
         ];
@@ -705,6 +787,7 @@ function App() {
             asistencia.estado,
             "",
             reunion.lugar,
+            "",
             "",
             asistencia.observacion || reunion.observacion,
             reunion.acta,
@@ -1236,6 +1319,75 @@ function SummaryCard({ icon, label, value, tone = "default" }: { icon: React.Rea
   );
 }
 
+function ComprobanteAdjuntoInput({
+  adjunto,
+  disabled,
+  onChange,
+}: {
+  adjunto?: ComprobanteAdjunto;
+  disabled?: boolean;
+  onChange: (adjunto?: ComprobanteAdjunto) => void;
+}) {
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setError("");
+    setLoading(true);
+    try {
+      onChange(await createComprobanteAdjunto(file));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="attachment-control">
+      <div className={adjunto ? "attachment-card" : "attachment-card empty"}>
+        <FileImage size={17} />
+        <div>
+          <strong>{adjunto ? adjunto.nombre : "Sin archivo adjunto"}</strong>
+          <span>
+            {adjunto
+              ? `${formatFileSize(adjunto.tamano)} · ${formatDateTime(adjunto.createdAt)}`
+              : disabled
+                ? "Para efectivo no necesitas adjuntar comprobante."
+                : "Puedes subir imagen o PDF liviano."}
+          </span>
+        </div>
+      </div>
+      <div className="attachment-actions">
+        <label className={disabled || loading ? "secondary-button disabled" : "secondary-button"}>
+          <Upload size={16} /> {loading ? "Procesando" : adjunto ? "Cambiar" : "Subir"}
+          <input
+            type="file"
+            accept={ACCEPTED_COMPROBANTE_TYPES}
+            onChange={handleFile}
+            disabled={disabled || loading}
+          />
+        </label>
+        {adjunto && (
+          <>
+            <a className="secondary-button" href={adjunto.dataUrl} target="_blank" rel="noreferrer" download={adjunto.nombre}>
+              <Download size={16} /> Ver
+            </a>
+            <button type="button" className="danger-button compact" onClick={() => onChange(undefined)}>
+              <Trash2 size={16} /> Quitar
+            </button>
+          </>
+        )}
+      </div>
+      {error && <small className="attachment-error">{error}</small>}
+    </div>
+  );
+}
+
 function SectionBanner({
   tab,
   periodo,
@@ -1327,12 +1479,12 @@ function CobroCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string }) => void;
   onEditarCobro: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
-  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "" });
+  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "", comprobanteAdjunto: undefined });
 
   return (
     <article className={`payment-card ${cobro.estadoPago}`}>
@@ -1417,6 +1569,7 @@ function CobroCard({
               onDetalle({
                 metodoPago,
                 referenciaPago: metodoPago === "efectivo" ? "" : cobro.referenciaPago,
+                comprobanteAdjunto: metodoPago === "efectivo" ? undefined : cobro.comprobanteAdjunto,
               });
             }}
           >
@@ -1443,6 +1596,11 @@ function CobroCard({
             disabled={cobro.metodoPago === "efectivo"}
           />
         </label>
+        <ComprobanteAdjuntoInput
+          adjunto={cobro.comprobanteAdjunto}
+          disabled={cobro.metodoPago === "efectivo"}
+          onChange={(comprobanteAdjunto) => onDetalle({ comprobanteAdjunto })}
+        />
       </section>
 
       <label className="note-input">
@@ -1642,12 +1800,12 @@ function CesCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string }) => void;
   onEditarPersona: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(pago.totalEsperado - pago.montoPagado, 0);
-  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "" });
+  const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo", referenciaPago: "", comprobanteAdjunto: undefined });
 
   return (
     <article className={`payment-card ces-card ${pago.estadoPago}`}>
@@ -1723,6 +1881,7 @@ function CesCard({
               onDetalle({
                 metodoPago,
                 referenciaPago: metodoPago === "efectivo" ? "" : pago.referenciaPago,
+                comprobanteAdjunto: metodoPago === "efectivo" ? undefined : pago.comprobanteAdjunto,
               });
             }}
           >
@@ -1749,6 +1908,11 @@ function CesCard({
             disabled={pago.metodoPago === "efectivo"}
           />
         </label>
+        <ComprobanteAdjuntoInput
+          adjunto={pago.comprobanteAdjunto}
+          disabled={pago.metodoPago === "efectivo"}
+          onChange={(comprobanteAdjunto) => onDetalle({ comprobanteAdjunto })}
+        />
       </section>
 
       <label className="note-input">
@@ -2879,6 +3043,7 @@ function CobroEditModal({
     fechaPago: cobro.fechaPago,
     metodoPago: cobro.metodoPago,
     referenciaPago: cobro.referenciaPago,
+    comprobanteAdjunto: cobro.comprobanteAdjunto,
     observacion: cobro.observacion,
   });
   const [touched, setTouched] = useState(false);
@@ -2899,6 +3064,7 @@ function CobroEditModal({
       ...current,
       metodoPago,
       referenciaPago: metodoPago === "efectivo" ? "" : current.referenciaPago,
+      comprobanteAdjunto: metodoPago === "efectivo" ? undefined : current.comprobanteAdjunto,
     }));
   };
 
@@ -2928,6 +3094,7 @@ function CobroEditModal({
       fechaPago: montoPagado > 0 ? form.fechaPago || new Date().toISOString().slice(0, 10) : "",
       metodoPago: form.metodoPago,
       referenciaPago: form.metodoPago === "efectivo" ? "" : form.referenciaPago.trim(),
+      comprobanteAdjunto: form.metodoPago === "efectivo" ? undefined : form.comprobanteAdjunto,
       observacion: form.observacion.trim(),
       confirmadoPorTesorero: estadoPago === "pagado" && montoPagado >= total && total > 0,
     });
@@ -3021,6 +3188,11 @@ function CobroEditModal({
             />
             <small>{missingReference ? "Ingresa el numero o descripcion del comprobante." : "Este dato queda guardado en el cobro."}</small>
           </label>
+          <ComprobanteAdjuntoInput
+            adjunto={form.comprobanteAdjunto}
+            disabled={form.metodoPago === "efectivo"}
+            onChange={(comprobanteAdjunto) => updateForm("comprobanteAdjunto", comprobanteAdjunto)}
+          />
         </section>
 
         <ModalField label="Observacion">
@@ -3068,7 +3240,7 @@ function PagoMultipleModal({
   onClose: () => void;
   onSave: (
     ids: string[],
-    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; observacion?: string },
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
   ) => void;
 }) {
   const firstPersonaId = defaultPersonaId && personas.some((persona) => persona.id === defaultPersonaId)
@@ -3079,6 +3251,7 @@ function PagoMultipleModal({
   const [fechaPago, setFechaPago] = useState(new Date().toISOString().slice(0, 10));
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("transferencia");
   const [referenciaPago, setReferenciaPago] = useState("");
+  const [comprobanteAdjunto, setComprobanteAdjunto] = useState<ComprobanteAdjunto | undefined>();
   const [observacion, setObservacion] = useState("");
   const [touched, setTouched] = useState(false);
 
@@ -3115,7 +3288,10 @@ function PagoMultipleModal({
 
   const handleMetodo = (value: MetodoPago) => {
     setMetodoPago(value);
-    if (value === "efectivo") setReferenciaPago("");
+    if (value === "efectivo") {
+      setReferenciaPago("");
+      setComprobanteAdjunto(undefined);
+    }
   };
 
   const handleSave = () => {
@@ -3126,6 +3302,7 @@ function PagoMultipleModal({
       fechaPago,
       metodoPago,
       referenciaPago,
+      comprobanteAdjunto: metodoPago === "efectivo" ? undefined : comprobanteAdjunto,
       observacion,
     });
   };
@@ -3243,6 +3420,11 @@ function PagoMultipleModal({
                     : "Se copiara en cada cuota seleccionada."}
               </small>
             </label>
+            <ComprobanteAdjuntoInput
+              adjunto={comprobanteAdjunto}
+              disabled={metodoPago === "efectivo"}
+              onChange={setComprobanteAdjunto}
+            />
           </section>
 
           <ModalField label="Observacion para estas cuotas">

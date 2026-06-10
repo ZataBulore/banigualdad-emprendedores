@@ -4,6 +4,7 @@ import { isFirebaseConfigured, readRemoteState, saveRemoteState, subscribeRemote
 import type {
   Centro,
   CobroSemanal,
+  ComprobanteAdjunto,
   ConfiguracionCes,
   ConfiguracionSeguridad,
   Emprendedor,
@@ -76,6 +77,7 @@ const fieldLabels: Record<string, string> = {
   fechaPago: "fecha de pago",
   metodoPago: "metodo de pago",
   referenciaPago: "referencia de pago",
+  comprobanteAdjunto: "comprobante adjunto",
   observacion: "observacion",
   confirmadoPorTesorero: "confirmacion tesorero",
   fecha: "fecha",
@@ -92,7 +94,13 @@ const normalizeAuditValue = (value: unknown): string => {
   if (typeof value === "boolean") return value ? "si" : "no";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "sin dato";
   if (typeof value === "object") {
+    const maybeAttachment = value as { nombre?: unknown; tamano?: unknown; dataUrl?: unknown };
+    if (maybeAttachment.dataUrl && maybeAttachment.nombre) {
+      return `${String(maybeAttachment.nombre)} (${String(maybeAttachment.tamano ?? "sin tamano")} bytes)`;
+    }
+
     return Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== "dataUrl")
       .map(([key, item]) => `${key}: ${normalizeAuditValue(item)}`)
       .join(", ") || "sin dato";
   }
@@ -247,6 +255,7 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       ...cobro,
       fechaAtraso: cobro.fechaAtraso ?? "",
       referenciaPago: cobro.referenciaPago ?? "",
+      comprobanteAdjunto: cobro.comprobanteAdjunto,
     })),
     pagosCes: state.pagosCes?.length
       ? state.pagosCes.map((pago) => ({
@@ -254,6 +263,7 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
           fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
           fechaAtraso: pago.fechaAtraso ?? "",
           referenciaPago: pago.referenciaPago ?? "",
+          comprobanteAdjunto: pago.comprobanteAdjunto,
         }))
       : crearPagosCes(state.emprendedores, configuracion),
     reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
@@ -663,19 +673,19 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
 
   const actualizarDetalle = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
   ) => updateCobro(id, detail, "Detalle de cobro actualizado");
 
   const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch, "Cobro editado");
 
   const actualizarDetalleCes = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
   ) => updateCes(id, detail, "Detalle CES actualizado");
 
   const registrarPagoMultiple = (
     ids: string[],
-    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; observacion?: string },
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
   ) => {
     const selected = new Set(ids);
 
@@ -696,6 +706,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
             fechaPago: detail.fechaPago,
             metodoPago: detail.metodoPago,
             referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
+            comprobanteAdjunto: detail.metodoPago === "efectivo" ? undefined : detail.comprobanteAdjunto,
             observacion: detail.observacion?.trim() || cobro.observacion,
             confirmadoPorTesorero: true,
           };
