@@ -40,7 +40,7 @@ import { getPeriodoTotals } from "./utils/totals";
 type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
-type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
+type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
@@ -264,6 +264,7 @@ const matchesPersonaSearch = (
     persona.rut,
     persona.whatsapp,
     persona.whatsappSecundario,
+    persona.nombreContactoSecundario,
     personaEstadoLabels[persona.estado],
     persona.fechaBaja,
     persona.motivoBaja,
@@ -302,10 +303,23 @@ const buildWhatsappUrl = (telefono: string, message: string) => {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 };
 
+const getSecondaryContactName = (persona: Emprendedor) => (persona.nombreContactoSecundario ?? "").trim();
+
+const getSecondaryContactLabel = (persona: Emprendedor) => {
+  const nombreContacto = getSecondaryContactName(persona);
+  return nombreContacto ? `Secundario (${nombreContacto})` : "Secundario";
+};
+
+const buildSecondaryAttendanceNote = (persona: Emprendedor) => {
+  const nombreContacto = getSecondaryContactName(persona);
+  if (!nombreContacto) return "";
+  return `Justifica asistencia: asiste ${nombreContacto} en representacion de ${persona.nombre}.`;
+};
+
 const getWhatsappContacts = (persona: Emprendedor) =>
   [
     { key: "principal", label: "Principal", value: persona.whatsapp ?? "" },
-    { key: "secundario", label: "Secundario", value: persona.whatsappSecundario ?? "" },
+    { key: "secundario", label: getSecondaryContactLabel(persona), value: persona.whatsappSecundario ?? "" },
   ].filter((contacto) => Boolean(normalizeWhatsapp(contacto.value)));
 
 const buildWhatsappMessages = (
@@ -354,6 +368,10 @@ const validatePersonaForm = (
 
   if ((form.notas ?? "").length > 200) {
     errors.notas = "La nota no puede superar 200 caracteres.";
+  }
+
+  if ((form.nombreContactoSecundario ?? "").length > 80) {
+    errors.nombreContactoSecundario = "El nombre del contacto secundario no puede superar 80 caracteres.";
   }
 
   if (form.estado === "de_baja") {
@@ -613,7 +631,7 @@ function App() {
     });
 
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "nombre_contacto_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -625,6 +643,7 @@ function App() {
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
           persona?.whatsappSecundario ?? "",
+          persona?.nombreContactoSecundario ?? "",
           persona ? personaEstadoLabels[persona.estado] : "",
           persona?.fechaBaja ?? "",
           persona?.motivoBaja ?? "",
@@ -651,6 +670,7 @@ function App() {
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
           persona?.whatsappSecundario ?? "",
+          persona?.nombreContactoSecundario ?? "",
           persona ? personaEstadoLabels[persona.estado] : "",
           persona?.fechaBaja ?? "",
           persona?.motivoBaja ?? "",
@@ -678,6 +698,7 @@ function App() {
             persona?.rut ?? "",
             persona?.whatsapp ?? "",
             persona?.whatsappSecundario ?? "",
+            persona?.nombreContactoSecundario ?? "",
             persona ? personaEstadoLabels[persona.estado] : "",
             persona?.fechaBaja ?? "",
             persona?.motivoBaja ?? "",
@@ -1517,6 +1538,11 @@ function PersonaPanel({
             <h3>WhatsApp</h3>
             <span>Principal: {persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}</span>
             <span>Secundario: {persona.whatsappSecundario ? formatWhatsapp(persona.whatsappSecundario) : "Sin numero registrado"}</span>
+            {persona.whatsappSecundario && (
+              <span>
+                Contacto secundario: {getSecondaryContactName(persona) || "misma persona"}
+              </span>
+            )}
           </div>
           <Phone size={20} />
         </header>
@@ -1910,6 +1936,7 @@ function AsistenciasPanel({
                 {asistencias.map((asistencia) => {
                   const persona = personasPorId.get(asistencia.emprendedorId);
                   if (!persona) return null;
+                  const secondaryAttendanceNote = buildSecondaryAttendanceNote(persona);
 
                   return (
                     <article key={asistencia.emprendedorId} className={`attendance-row ${asistencia.estado}`}>
@@ -1917,6 +1944,9 @@ function AsistenciasPanel({
                         <div>
                           <strong>{persona.nombre}</strong>
                           <span>{persona.rut}</span>
+                          {secondaryAttendanceNote && (
+                            <span className="attendance-representative">Representante: {getSecondaryContactName(persona)}</span>
+                          )}
                         </div>
                         <span className={`badge ${asistencia.estado}`}>{asistenciaLabels[asistencia.estado]}</span>
                       </header>
@@ -1931,6 +1961,19 @@ function AsistenciasPanel({
                           </button>
                         ))}
                       </div>
+                      {secondaryAttendanceNote && (
+                        <button
+                          className="representative-button"
+                          onClick={() =>
+                            onAsistencia(reunionActiva.id, asistencia.emprendedorId, {
+                              estado: "justificado",
+                              observacion: secondaryAttendanceNote,
+                            })
+                          }
+                        >
+                          <Users size={16} /> Justificar con {getSecondaryContactName(persona)}
+                        </button>
+                      )}
                       <label className="attendance-note">
                         <span>Observacion</span>
                         <input
@@ -2191,6 +2234,7 @@ function ConfigPanel({
               <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
               <ConfigInput label="WhatsApp principal" value={persona.whatsapp ?? ""} onChange={(value) => onPersona(persona.id, { whatsapp: value })} />
               <ConfigInput label="WhatsApp secundario" value={persona.whatsappSecundario ?? ""} onChange={(value) => onPersona(persona.id, { whatsappSecundario: value })} />
+              <ConfigInput label="Nombre contacto secundario" value={persona.nombreContactoSecundario ?? ""} onChange={(value) => onPersona(persona.id, { nombreContactoSecundario: value })} />
               <label className="config-field">
                 <span>Estado</span>
                 <select
@@ -2593,6 +2637,7 @@ function PersonaEditModal({
     rut: persona.rut,
     whatsapp: persona.whatsapp ?? "",
     whatsappSecundario: persona.whatsappSecundario ?? "",
+    nombreContactoSecundario: persona.nombreContactoSecundario ?? "",
     estado: persona.estado,
     fechaBaja: persona.fechaBaja ?? "",
     motivoBaja: persona.motivoBaja ?? "",
@@ -2624,6 +2669,7 @@ function PersonaEditModal({
       rut: formatRut(form.rut),
       whatsapp: formatWhatsapp(form.whatsapp),
       whatsappSecundario: formatWhatsapp(form.whatsappSecundario),
+      nombreContactoSecundario: form.nombreContactoSecundario?.trim() || "",
       estado: form.estado,
       fechaBaja: form.estado === "de_baja" ? form.fechaBaja : "",
       motivoBaja: form.estado === "de_baja" ? form.motivoBaja?.trim() : "",
@@ -2689,6 +2735,15 @@ function PersonaEditModal({
               }}
               inputMode="tel"
               placeholder="+56 9 1234 5678"
+            />
+          </ModalField>
+
+          <ModalField label="Nombre contacto secundario" error={touched ? errors.nombreContactoSecundario : undefined} hint="Opcional. Si queda vacio, se entiende que el segundo numero es de la misma persona.">
+            <input
+              value={form.nombreContactoSecundario ?? ""}
+              onChange={(event) => updateForm("nombreContactoSecundario", event.target.value)}
+              onBlur={() => setTouched(true)}
+              placeholder="Ej: nombre de esposa, hijo o representante"
             />
           </ModalField>
 

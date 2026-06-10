@@ -34,6 +34,7 @@ export interface Emprendedor {
   rut: string;
   whatsapp?: string;
   whatsappSecundario?: string;
+  nombreContactoSecundario?: string;
   estado: EstadoPersona;
   fechaBaja?: string;
   motivoBaja?: string;
