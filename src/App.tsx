@@ -143,6 +143,8 @@ const transferenciaRequiereAdjunto = (metodoPago: MetodoPago) => metodoPago === 
 const estadoActionClass = (estadoActual: EstadoPago, estadoBoton: EstadoPago, base = "") =>
   ["state-action", base, estadoActual === estadoBoton ? "action-selected" : ""].filter(Boolean).join(" ");
 
+const pressFeedbackSelector = "button, label.secondary-button, .quota-option";
+
 const validarComprobanteTransferencia = (metodoPago: MetodoPago, comprobanteAdjunto?: ComprobanteAdjunto | null) => {
   if (!transferenciaRequiereAdjunto(metodoPago) || comprobanteAdjunto) return true;
   window.alert("Para registrar una transferencia como pagada, adjunta primero el comprobante enviado.");
@@ -552,6 +554,48 @@ function App() {
   const [cobroEditandoId, setCobroEditandoId] = useState<string | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const applyPressFeedback = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return;
+      const element = target.closest<HTMLElement>(pressFeedbackSelector);
+      if (!element || element.matches(":disabled")) return;
+
+      element.classList.add("press-feedback");
+      window.setTimeout(() => element.classList.remove("press-feedback"), 220);
+    };
+
+    const handlePointerDown = (event: PointerEvent) => applyPressFeedback(event.target);
+    const handlePointerOver = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      if (!(event.target instanceof Element)) return;
+      const element = event.target.closest<HTMLElement>(pressFeedbackSelector);
+      if (!element || element.matches(":disabled")) return;
+      element.classList.add("hover-feedback");
+    };
+    const handlePointerOut = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      if (!(event.target instanceof Element)) return;
+      const element = event.target.closest<HTMLElement>(pressFeedbackSelector);
+      element?.classList.remove("hover-feedback");
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      applyPressFeedback(event.target);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, { passive: true });
+    document.addEventListener("pointerover", handlePointerOver, { passive: true });
+    document.addEventListener("pointerout", handlePointerOut, { passive: true });
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointerover", handlePointerOver);
+      document.removeEventListener("pointerout", handlePointerOut);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   const correosAutorizados = useMemo(
     () => normalizeEmailList([
