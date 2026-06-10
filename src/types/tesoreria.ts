@@ -52,6 +52,37 @@ export interface ComprobanteAdjunto {
   createdAt: string;
 }
 
+export type EstadoEmprendimiento = "activo" | "pausado" | "cerrado";
+
+export interface EmprendimientoFoto {
+  id: string;
+  nombre: string;
+  tipo: string;
+  dataUrl: string;
+  tamano: number;
+  createdAt: string;
+}
+
+export interface Emprendimiento {
+  id: string;
+  emprendedorId: string;
+  nombre: string;
+  rubro: string;
+  descripcion: string;
+  direccion: string;
+  sector: string;
+  whatsapp: string;
+  correo: string;
+  redesSociales: string;
+  estado: EstadoEmprendimiento;
+  periodoOrigenId?: string;
+  creditoOrigen?: number;
+  fotos: EmprendimientoFoto[];
+  notas?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CobroSemanal {
   id: string;
   periodoId: string;
@@ -125,6 +156,7 @@ export type TipoMovimiento =
   | "cobro"
   | "ces"
   | "persona"
+  | "emprendimiento"
   | "asistencia"
   | "reunion"
   | "configuracion"
@@ -149,6 +181,7 @@ export interface TesoreriaState {
   emprendedores: Emprendedor[];
   cobros: CobroSemanal[];
   pagosCes: PagoCes[];
+  emprendimientos: Emprendimiento[];
   reuniones: Reunion[];
   historial: MovimientoHistorial[];
   updatedAt: string;

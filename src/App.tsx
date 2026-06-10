@@ -11,9 +11,12 @@ import {
   Eye,
   FileImage,
   History,
+  ImagePlus,
   Landmark,
   LogOut,
   LockKeyhole,
+  Mail,
+  MapPin,
   MessageCircle,
   Pencil,
   Phone,
@@ -25,6 +28,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sprout,
+  Store,
   Trash2,
   Upload,
   Users,
@@ -41,14 +45,15 @@ import {
   signInFirebaseWithGoogleCredential,
   signOutFirebase,
 } from "./services/firebase";
-import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, EstadoAsistencia, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
-type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
+type Tab = "cobros" | "ces" | "personas" | "emprendimientos" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
+type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
@@ -83,6 +88,8 @@ const SUPERADMIN_RESET_PASSWORD = "1q2w3e4r.,*";
 const MAX_COMPROBANTE_BYTES = 420 * 1024;
 const MAX_IMAGE_SIDE = 1400;
 const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
+const MAX_EMPRENDIMIENTO_FOTOS = 4;
+const ACCEPTED_FOTO_TYPES = "image/*";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -115,6 +122,14 @@ const personaEstadoLabels: Record<EstadoPersona, string> = {
   activa: "Activa",
   de_baja: "De baja",
 };
+
+const emprendimientoEstadoLabels: Record<EstadoEmprendimiento, string> = {
+  activo: "Activo",
+  pausado: "Pausado",
+  cerrado: "Cerrado",
+};
+
+const emprendimientoEstadoOptions: EstadoEmprendimiento[] = ["activo", "pausado", "cerrado"];
 
 const ANILLO_PERSONA_LABEL = "Anillo";
 
@@ -390,6 +405,19 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   };
 };
 
+const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto> => {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Solo se aceptan imagenes para la central de emprendimientos.");
+  }
+
+  const image = await compressImageFile(file);
+  return {
+    id: `foto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    ...image,
+    createdAt: new Date().toISOString(),
+  };
+};
+
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -486,6 +514,26 @@ const matchesPersonaSearch = (
     (!!numericQuery && numericHaystack.includes(numericQuery))
   );
 };
+
+const matchesEmprendimientoSearch = (
+  emprendimiento: Emprendimiento,
+  persona: Emprendedor | undefined,
+  query: string,
+) =>
+  matchesPersonaSearch(persona, query, [
+    emprendimiento.nombre,
+    emprendimiento.rubro,
+    emprendimiento.descripcion,
+    emprendimiento.direccion,
+    emprendimiento.sector,
+    emprendimiento.whatsapp,
+    emprendimiento.correo,
+    emprendimiento.redesSociales,
+    emprendimientoEstadoLabels[emprendimiento.estado],
+    emprendimiento.creditoOrigen,
+    emprendimiento.notas,
+    ...emprendimiento.fotos.map((foto) => foto.nombre),
+  ]);
 
 const getSemanaCobroInicial = (periodos: Periodo[]) => {
   const ordenados = [...periodos].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento));
@@ -611,6 +659,9 @@ function App() {
     updateCentro,
     updatePeriodo,
     updateEmprendedor,
+    crearEmprendimiento,
+    updateEmprendimiento,
+    eliminarEmprendimiento,
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
     recalcularPagosCes,
@@ -640,6 +691,8 @@ function App() {
   const [busqueda, setBusqueda] = useState("");
   const [personaActiva, setPersonaActiva] = useState<string | null>(null);
   const [personaEditando, setPersonaEditando] = useState<Emprendedor | null>(null);
+  const [emprendimientoEditando, setEmprendimientoEditando] = useState<Emprendimiento | null>(null);
+  const [nuevoEmprendimientoAbierto, setNuevoEmprendimientoAbierto] = useState(false);
   const [cobroEditandoId, setCobroEditandoId] = useState<string | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -810,6 +863,14 @@ function App() {
     [busqueda, state.emprendedores],
   );
 
+  const emprendimientosFiltrados = useMemo(
+    () =>
+      state.emprendimientos.filter((emprendimiento) =>
+        matchesEmprendimientoSearch(emprendimiento, personasPorId.get(emprendimiento.emprendedorId), busqueda),
+      ),
+    [busqueda, personasPorId, state.emprendimientos],
+  );
+
   const asistenciasFiltradas = useMemo(() => {
     if (!reunionActiva) return [];
 
@@ -967,6 +1028,34 @@ function App() {
           ];
         }),
       ),
+      ...state.emprendimientos.map((emprendimiento) => {
+        const persona = personasPorId.get(emprendimiento.emprendedorId);
+        return [
+          "emprendimiento",
+          emprendimiento.periodoOrigenId ?? "",
+          "",
+          persona?.nombre ?? "",
+          persona?.rut ?? "",
+          persona?.whatsapp ?? "",
+          persona?.whatsappSecundario ?? "",
+          persona?.nombreContactoSecundario ?? "",
+          persona ? personaEstadoLabels[persona.estado] : "",
+          persona?.fechaBaja ?? "",
+          persona?.motivoBaja ?? "",
+          emprendimiento.creditoOrigen ?? persona?.creditoOriginal ?? "",
+          "",
+          "",
+          "",
+          "",
+          emprendimiento.estado,
+          "",
+          emprendimiento.rubro,
+          `${emprendimiento.direccion}${emprendimiento.sector ? ` · ${emprendimiento.sector}` : ""}`,
+          emprendimiento.fotos.map((foto) => foto.nombre).join("; "),
+          `${emprendimiento.nombre}. ${emprendimiento.descripcion}${emprendimiento.notas ? ` · ${emprendimiento.notas}` : ""}`,
+          [emprendimiento.whatsapp, emprendimiento.correo, emprendimiento.redesSociales].filter(Boolean).join(" · "),
+        ];
+      }),
     ];
 
     const csv = rows
@@ -1115,6 +1204,9 @@ function App() {
         </button>
         <button className={tab === "personas" ? "active" : ""} onClick={() => goToTab("personas")}>
           <Users size={18} /> Personas
+        </button>
+        <button className={tab === "emprendimientos" ? "active" : ""} onClick={() => goToTab("emprendimientos")}>
+          <Store size={18} /> Central
         </button>
         <button className={tab === "asistencias" ? "active" : ""} onClick={() => goToTab("asistencias")}>
           <CalendarCheck size={18} /> Reuniones
@@ -1320,6 +1412,33 @@ function App() {
         </section>
       )}
 
+      {tab === "emprendimientos" && (
+        <EmprendimientosPanel
+          emprendimientos={emprendimientosFiltrados}
+          totalEmprendimientos={state.emprendimientos.length}
+          personas={state.emprendedores}
+          personasPorId={personasPorId}
+          periodos={state.periodos}
+          busqueda={busqueda}
+          onBusqueda={setBusqueda}
+          onNuevo={() => setNuevoEmprendimientoAbierto(true)}
+          onEditar={setEmprendimientoEditando}
+          onEliminar={async (emprendimiento) => {
+            const confirmed = await confirmarAccionCritica(`Eliminar "${emprendimiento.nombre}" de la central? Se quitaran sus datos y fotos guardadas. Esta accion queda registrada y no se puede deshacer automaticamente.`, {
+              title: "Semilla Emprende Negrete advierte",
+              tone: "danger",
+              confirmLabel: "Eliminar",
+            });
+            if (!confirmed) return;
+            eliminarEmprendimiento(emprendimiento.id);
+          }}
+          onPersona={(personaId) => {
+            setPersonaActiva(personaId);
+            goToTab("personas");
+          }}
+        />
+      )}
+
       {tab === "asistencias" && (
         <AsistenciasPanel
           reuniones={state.reuniones}
@@ -1367,6 +1486,31 @@ function App() {
           onReset={handleReset}
           cloudStatus={cloudStatus}
           cloudError={cloudError}
+        />
+      )}
+
+      {nuevoEmprendimientoAbierto && (
+        <EmprendimientoModal
+          personas={state.emprendedores}
+          periodos={state.periodos}
+          onClose={() => setNuevoEmprendimientoAbierto(false)}
+          onSave={(payload) => {
+            crearEmprendimiento(payload);
+            setNuevoEmprendimientoAbierto(false);
+          }}
+        />
+      )}
+
+      {emprendimientoEditando && (
+        <EmprendimientoModal
+          emprendimiento={emprendimientoEditando}
+          personas={state.emprendedores}
+          periodos={state.periodos}
+          onClose={() => setEmprendimientoEditando(null)}
+          onSave={(payload) => {
+            updateEmprendimiento(emprendimientoEditando.id, payload);
+            setEmprendimientoEditando(null);
+          }}
         />
       )}
 
@@ -1753,6 +1897,11 @@ function SectionBanner({
       title: "Personas del grupo",
       detail: "Ficha, historial y contacto por WhatsApp",
       icon: <Users size={20} />,
+    },
+    emprendimientos: {
+      title: "Central de emprendimientos",
+      detail: "Fotos, rubros, direccion y contactos comerciales",
+      icon: <Store size={20} />,
     },
     asistencias: {
       title: "Reuniones",
@@ -2263,6 +2412,404 @@ function CesCard({
         <span>Saldo CES: {formatCurrency(saldo)}</span>
       </footer>
     </article>
+  );
+}
+
+function EmprendimientosPanel({
+  emprendimientos,
+  totalEmprendimientos,
+  personas,
+  personasPorId,
+  busqueda,
+  onBusqueda,
+  onNuevo,
+  onEditar,
+  onEliminar,
+  onPersona,
+}: {
+  emprendimientos: Emprendimiento[];
+  totalEmprendimientos: number;
+  personas: Emprendedor[];
+  personasPorId: Map<string, Emprendedor>;
+  periodos: Periodo[];
+  busqueda: string;
+  onBusqueda: (value: string) => void;
+  onNuevo: () => void;
+  onEditar: (emprendimiento: Emprendimiento) => void;
+  onEliminar: (emprendimiento: Emprendimiento) => void;
+  onPersona: (personaId: string) => void;
+}) {
+  const activos = emprendimientos.filter((item) => item.estado === "activo").length;
+
+  return (
+    <section className="workspace ventures-panel">
+      <div className="venture-toolbar">
+        <SearchInput
+          value={busqueda}
+          onChange={onBusqueda}
+          placeholder="Buscar emprendimiento, persona, rubro o contacto"
+        />
+        <button className="primary-button" onClick={onNuevo}>
+          <Plus size={18} /> Nuevo emprendimiento
+        </button>
+      </div>
+
+      <section className="summary-grid compact venture-summary">
+        <SummaryCard icon={<Store />} label="Registrados" value={String(totalEmprendimientos)} />
+        <SummaryCard icon={<CheckCircle2 />} label="Activos" value={String(activos)} tone="success" />
+        <SummaryCard icon={<Users />} label="Personas" value={String(new Set(emprendimientos.map((item) => item.emprendedorId)).size)} tone="info" />
+        <SummaryCard icon={<ImagePlus />} label="Fotos" value={String(emprendimientos.reduce((total, item) => total + item.fotos.length, 0))} />
+      </section>
+
+      <div className="venture-grid">
+        {emprendimientos.map((emprendimiento) => (
+          <EmprendimientoCard
+            key={emprendimiento.id}
+            emprendimiento={emprendimiento}
+            persona={personasPorId.get(emprendimiento.emprendedorId)}
+            onEditar={() => onEditar(emprendimiento)}
+            onEliminar={() => onEliminar(emprendimiento)}
+            onPersona={() => onPersona(emprendimiento.emprendedorId)}
+          />
+        ))}
+        {!emprendimientos.length && (
+          <section className="empty-state venture-empty">
+            <Store size={22} />
+            <span>
+              {personas.length
+                ? "Aun no hay emprendimientos para esta busqueda. Crea el primero desde el boton Nuevo emprendimiento."
+                : "Primero deben existir personas registradas para asociar emprendimientos."}
+            </span>
+          </section>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function EmprendimientoCard({
+  emprendimiento,
+  persona,
+  onEditar,
+  onEliminar,
+  onPersona,
+}: {
+  emprendimiento: Emprendimiento;
+  persona?: Emprendedor;
+  onEditar: () => void;
+  onEliminar: () => void;
+  onPersona: () => void;
+}) {
+  const fotoPrincipal = emprendimiento.fotos[0];
+  const whatsappHref = emprendimiento.whatsapp ? buildWhatsappUrl(emprendimiento.whatsapp, `Hola, vi tu emprendimiento ${emprendimiento.nombre} y quiero consultar.`) : "";
+
+  return (
+    <article className={`venture-card ${emprendimiento.estado}`}>
+      <div className="venture-photo">
+        {fotoPrincipal ? (
+          <img src={fotoPrincipal.dataUrl} alt={emprendimiento.nombre} />
+        ) : (
+          <Store size={32} />
+        )}
+        <span className={`badge ${emprendimiento.estado}`}>{emprendimientoEstadoLabels[emprendimiento.estado]}</span>
+      </div>
+
+      <div className="venture-body">
+        <header>
+          <div>
+            <p className="eyebrow">{emprendimiento.rubro || "Sin rubro"}</p>
+            <h2>{emprendimiento.nombre}</h2>
+          </div>
+          <div className="card-header-actions">
+            <button className="icon-button" onClick={onEditar} aria-label={`Editar ${emprendimiento.nombre}`}>
+              <Pencil size={17} />
+            </button>
+            <button className="danger-icon-button" onClick={onEliminar} aria-label={`Eliminar ${emprendimiento.nombre}`}>
+              <Trash2 size={17} />
+            </button>
+          </div>
+        </header>
+
+        <button className="venture-owner" onClick={onPersona}>
+          <Users size={15} />
+          <span>{persona?.nombre ?? "Persona no encontrada"}</span>
+        </button>
+
+        {emprendimiento.descripcion && <p className="venture-description">{emprendimiento.descripcion}</p>}
+
+        <div className="venture-detail-list">
+          {(emprendimiento.direccion || emprendimiento.sector) && (
+            <span><MapPin size={15} /> {[emprendimiento.direccion, emprendimiento.sector].filter(Boolean).join(" · ")}</span>
+          )}
+          {emprendimiento.whatsapp && <span><Phone size={15} /> {formatWhatsapp(emprendimiento.whatsapp)}</span>}
+          {emprendimiento.correo && <span><Mail size={15} /> {emprendimiento.correo}</span>}
+          {emprendimiento.redesSociales && <span><MessageCircle size={15} /> {emprendimiento.redesSociales}</span>}
+        </div>
+
+        <div className="venture-actions">
+          {whatsappHref && (
+            <a className="secondary-button" href={whatsappHref} target="_blank" rel="noreferrer">
+              <MessageCircle size={16} /> WhatsApp
+            </a>
+          )}
+          {emprendimiento.correo && (
+            <a className="secondary-button" href={`mailto:${emprendimiento.correo}`}>
+              <Mail size={16} /> Correo
+            </a>
+          )}
+        </div>
+
+        {emprendimiento.fotos.length > 1 && (
+          <div className="venture-thumbs" aria-label="Fotos del emprendimiento">
+            {emprendimiento.fotos.slice(1).map((foto) => (
+              <img key={foto.id} src={foto.dataUrl} alt={foto.nombre} />
+            ))}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function EmprendimientoModal({
+  emprendimiento,
+  personas,
+  periodos,
+  onClose,
+  onSave,
+}: {
+  emprendimiento?: Emprendimiento;
+  personas: Emprendedor[];
+  periodos: Periodo[];
+  onClose: () => void;
+  onSave: (payload: EmprendimientoForm) => void;
+}) {
+  const firstPersona = personas[0];
+  const [form, setForm] = useState<EmprendimientoForm>(() => ({
+    emprendedorId: emprendimiento?.emprendedorId ?? firstPersona?.id ?? "",
+    nombre: emprendimiento?.nombre ?? "",
+    rubro: emprendimiento?.rubro ?? "",
+    descripcion: emprendimiento?.descripcion ?? "",
+    direccion: emprendimiento?.direccion ?? "",
+    sector: emprendimiento?.sector ?? "",
+    whatsapp: emprendimiento?.whatsapp ?? firstPersona?.whatsapp ?? "",
+    correo: emprendimiento?.correo ?? "",
+    redesSociales: emprendimiento?.redesSociales ?? "",
+    estado: emprendimiento?.estado ?? "activo",
+    periodoOrigenId: emprendimiento?.periodoOrigenId ?? "",
+    creditoOrigen: emprendimiento?.creditoOrigen ?? firstPersona?.creditoOriginal ?? 0,
+    fotos: emprendimiento?.fotos ?? [],
+    notas: emprendimiento?.notas ?? "",
+  }));
+  const [touched, setTouched] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const selectedPersona = personas.find((persona) => persona.id === form.emprendedorId);
+  const errors = {
+    emprendedorId: form.emprendedorId ? "" : "Selecciona una persona.",
+    nombre: form.nombre.trim() ? "" : "Ingresa el nombre del emprendimiento.",
+    whatsapp: isValidWhatsapp(form.whatsapp) ? "" : "Usa un WhatsApp chileno valido o deja el campo vacio.",
+    correo: !form.correo.trim() || isValidEmail(form.correo.trim()) ? "" : "Ingresa un correo valido o deja el campo vacio.",
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+
+  const updateForm = <K extends keyof EmprendimientoForm>(key: K, value: EmprendimientoForm[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handlePersona = (emprendedorId: string) => {
+    const persona = personas.find((item) => item.id === emprendedorId);
+    setForm((current) => ({
+      ...current,
+      emprendedorId,
+      whatsapp: current.whatsapp || persona?.whatsapp || "",
+      creditoOrigen: current.creditoOrigen || persona?.creditoOriginal || 0,
+    }));
+  };
+
+  const handleFotos = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (form.fotos.length + files.length > MAX_EMPRENDIMIENTO_FOTOS) {
+      setFotoError(`Puedes guardar hasta ${MAX_EMPRENDIMIENTO_FOTOS} fotos por emprendimiento.`);
+      return;
+    }
+
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      const fotos = await Promise.all(files.map(createEmprendimientoFoto));
+      updateForm("fotos", [...form.fotos, ...fotos]);
+    } catch (error) {
+      setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const quitarFoto = (id: string) => {
+    updateForm("fotos", form.fotos.filter((foto) => foto.id !== id));
+  };
+
+  const handleSave = () => {
+    setTouched(true);
+    if (hasErrors) return;
+
+    onSave({
+      ...form,
+      nombre: form.nombre.trim(),
+      rubro: form.rubro.trim(),
+      descripcion: form.descripcion.trim(),
+      direccion: form.direccion.trim(),
+      sector: form.sector.trim(),
+      whatsapp: formatWhatsapp(form.whatsapp),
+      correo: form.correo.trim().toLowerCase(),
+      redesSociales: form.redesSociales.trim(),
+      periodoOrigenId: form.periodoOrigenId || "",
+      creditoOrigen: Number(form.creditoOrigen || selectedPersona?.creditoOriginal || 0),
+      notas: form.notas?.trim() || "",
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal venture-modal" role="dialog" aria-modal="true" aria-labelledby="venture-modal-title">
+        <header>
+          <div>
+            <p className="eyebrow">Central de emprendimientos</p>
+            <h2 id="venture-modal-title">{emprendimiento ? "Editar emprendimiento" : "Nuevo emprendimiento"}</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar central de emprendimientos">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="modal-grid">
+          <ModalField label="Persona asociada" error={touched ? errors.emprendedorId : undefined}>
+            <select value={form.emprendedorId} onChange={(event) => handlePersona(event.target.value)}>
+              <option value="">Seleccionar persona</option>
+              {personas.map((persona) => (
+                <option key={persona.id} value={persona.id}>{persona.nombre} · {persona.rut}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Nombre del emprendimiento" error={touched ? errors.nombre : undefined}>
+            <input value={form.nombre} onChange={(event) => updateForm("nombre", event.target.value)} onBlur={() => setTouched(true)} placeholder="Ej: Amasanderia, bazar, reposteria" />
+          </ModalField>
+
+          <ModalField label="Rubro">
+            <input value={form.rubro} onChange={(event) => updateForm("rubro", event.target.value)} placeholder="Alimentos, comercio, servicios..." />
+          </ModalField>
+
+          <ModalField label="Estado">
+            <select value={form.estado} onChange={(event) => updateForm("estado", event.target.value as EstadoEmprendimiento)}>
+              {emprendimientoEstadoOptions.map((estado) => (
+                <option key={estado} value={estado}>{emprendimientoEstadoLabels[estado]}</option>
+              ))}
+            </select>
+          </ModalField>
+
+          <ModalField label="Direccion">
+            <input value={form.direccion} onChange={(event) => updateForm("direccion", event.target.value)} placeholder="Calle, numero o referencia" />
+          </ModalField>
+
+          <ModalField label="Sector">
+            <input value={form.sector} onChange={(event) => updateForm("sector", event.target.value)} placeholder="Villa, poblacion, rural, centro" />
+          </ModalField>
+
+          <ModalField label="WhatsApp del emprendimiento" error={touched ? errors.whatsapp : undefined}>
+            <input
+              value={form.whatsapp}
+              onChange={(event) => updateForm("whatsapp", event.target.value)}
+              onBlur={() => {
+                updateForm("whatsapp", formatWhatsapp(form.whatsapp));
+                setTouched(true);
+              }}
+              inputMode="tel"
+              placeholder="+56 9 1234 5678"
+            />
+          </ModalField>
+
+          <ModalField label="Correo" error={touched ? errors.correo : undefined}>
+            <input value={form.correo} onChange={(event) => updateForm("correo", event.target.value)} inputMode="email" placeholder="correo@ejemplo.cl" />
+          </ModalField>
+
+          <ModalField label="Redes sociales">
+            <input value={form.redesSociales} onChange={(event) => updateForm("redesSociales", event.target.value)} placeholder="@instagram, Facebook o enlace" />
+          </ModalField>
+
+          <ModalField label="Credito origen">
+            <input type="number" min="0" inputMode="numeric" value={form.creditoOrigen || ""} onChange={(event) => updateForm("creditoOrigen", Number(event.target.value || 0))} />
+          </ModalField>
+
+          <ModalField label="Periodo origen">
+            <select value={form.periodoOrigenId ?? ""} onChange={(event) => updateForm("periodoOrigenId", event.target.value)}>
+              <option value="">Sin periodo asociado</option>
+              {periodos.map((periodo) => (
+                <option key={periodo.id} value={periodo.id}>Cuota {periodo.numeroCuota} · {formatDate(periodo.fechaVencimiento)}</option>
+              ))}
+            </select>
+          </ModalField>
+        </div>
+
+        <ModalField label="Descripcion">
+          <textarea value={form.descripcion} onChange={(event) => updateForm("descripcion", event.target.value)} rows={3} placeholder="Que vende, horarios, encargos o detalles utiles" />
+        </ModalField>
+
+        <section className="venture-photo-manager">
+          <div className="venture-photo-manager-head">
+            <div>
+              <p className="eyebrow">Fotos</p>
+              <strong>{form.fotos.length}/{MAX_EMPRENDIMIENTO_FOTOS} guardadas</strong>
+            </div>
+            <label className={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS ? "secondary-button disabled" : "secondary-button"}>
+              <ImagePlus size={16} /> {fotoLoading ? "Procesando" : "Agregar foto"}
+              <input
+                type="file"
+                accept={ACCEPTED_FOTO_TYPES}
+                multiple
+                onChange={handleFotos}
+                disabled={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS}
+              />
+            </label>
+          </div>
+          {fotoError && <small className="attachment-error">{fotoError}</small>}
+          <div className="venture-photo-list">
+            {form.fotos.map((foto) => (
+              <figure key={foto.id}>
+                <img src={foto.dataUrl} alt={foto.nombre} />
+                <figcaption>
+                  <span>{foto.nombre}</span>
+                  <button type="button" className="danger-icon-button" onClick={() => quitarFoto(foto.id)} aria-label={`Quitar ${foto.nombre}`}>
+                    <Trash2 size={15} />
+                  </button>
+                </figcaption>
+              </figure>
+            ))}
+            {!form.fotos.length && <p className="empty-state">Puedes guardar fotos de productos, local, trabajos realizados o referencia visual.</p>}
+          </div>
+        </section>
+
+        <ModalField label="Notas internas">
+          <textarea value={form.notas ?? ""} onChange={(event) => updateForm("notas", event.target.value)} rows={2} placeholder="Opcional, solo para gestion interna" />
+        </ModalField>
+
+        {touched && hasErrors && (
+          <div className="modal-error" role="alert">
+            Revisa persona, nombre y datos de contacto antes de guardar.
+          </div>
+        )}
+
+        <footer>
+          <button className="secondary-button" onClick={onClose}>Cancelar</button>
+          <button className="primary-button" onClick={handleSave}>
+            <Check size={18} /> Guardar emprendimiento
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 

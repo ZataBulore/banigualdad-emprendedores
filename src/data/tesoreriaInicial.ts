@@ -169,6 +169,7 @@ export const tesoreriaInicial: TesoreriaState = {
     { id: "16296799-1", nombre: "Bulboa Orellana, Sergio", rut: "16.296.799-1", estado: "activa", anillo: 0, creditoOriginal: 200000 },
     { id: "12734209-1", nombre: "Rebolledo Rosales, Silvia Ester", rut: "12.734.209-1", estado: "activa", anillo: 0, creditoOriginal: 150000 },
   ], configuracionInicial),
+  emprendimientos: [],
   reuniones: [],
   historial: [],
   updatedAt: new Date().toISOString(),

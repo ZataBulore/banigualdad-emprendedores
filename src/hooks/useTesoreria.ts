@@ -13,6 +13,7 @@ import type {
   ComprobanteAdjunto,
   ConfiguracionCes,
   ConfiguracionSeguridad,
+  Emprendimiento,
   Emprendedor,
   EstadoAsistencia,
   EstadoPago,
@@ -67,7 +68,17 @@ const fieldLabels: Record<string, string> = {
   whatsapp: "WhatsApp principal",
   whatsappSecundario: "WhatsApp secundario",
   nombreContactoSecundario: "nombre contacto secundario",
+  emprendedorId: "persona asociada",
   estado: "estado",
+  rubro: "rubro",
+  descripcion: "descripcion",
+  direccion: "direccion",
+  sector: "sector",
+  correo: "correo",
+  redesSociales: "redes sociales",
+  periodoOrigenId: "periodo origen",
+  creditoOrigen: "credito origen",
+  fotos: "fotos",
   fechaBaja: "fecha de baja",
   motivoBaja: "motivo de baja",
   observacionBaja: "observacion de baja",
@@ -272,6 +283,23 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
           comprobanteAdjunto: pago.comprobanteAdjunto,
         }))
       : crearPagosCes(state.emprendedores, configuracion),
+    emprendimientos: (state.emprendimientos ?? []).map((emprendimiento) => ({
+      ...emprendimiento,
+      rubro: emprendimiento.rubro ?? "",
+      descripcion: emprendimiento.descripcion ?? "",
+      direccion: emprendimiento.direccion ?? "",
+      sector: emprendimiento.sector ?? "",
+      whatsapp: emprendimiento.whatsapp ?? "",
+      correo: emprendimiento.correo ?? "",
+      redesSociales: emprendimiento.redesSociales ?? "",
+      estado: emprendimiento.estado ?? "activo",
+      periodoOrigenId: emprendimiento.periodoOrigenId ?? "",
+      creditoOrigen: emprendimiento.creditoOrigen ?? 0,
+      fotos: emprendimiento.fotos ?? [],
+      notas: emprendimiento.notas ?? "",
+      createdAt: emprendimiento.createdAt ?? new Date().toISOString(),
+      updatedAt: emprendimiento.updatedAt ?? emprendimiento.createdAt ?? new Date().toISOString(),
+    })),
     reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
     historial: state.historial ?? [],
   };
@@ -499,6 +527,82 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
         entidadId: id,
         personaId: id,
         personaNombre: patch.nombre ?? persona?.nombre,
+      }, options.updatedBy);
+    });
+  };
+
+  const crearEmprendimiento = (payload: Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">) => {
+    const timestamp = new Date().toISOString();
+    const id = `emprendimiento-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    setState((current) => {
+      const persona = current.emprendedores.find((item) => item.id === payload.emprendedorId);
+      const emprendimiento: Emprendimiento = {
+        ...payload,
+        id,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+
+      return withMovimiento({
+        ...current,
+        emprendimientos: [emprendimiento, ...(current.emprendimientos ?? [])],
+        updatedAt: timestamp,
+      }, {
+        tipo: "emprendimiento",
+        accion: "Emprendimiento creado",
+        detalle: `${emprendimiento.nombre}. Rubro: ${emprendimiento.rubro || "sin rubro"}. Fotos: ${emprendimiento.fotos.length}.`,
+        entidadId: id,
+        personaId: persona?.id ?? payload.emprendedorId,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
+
+    return id;
+  };
+
+  const updateEmprendimiento = (id: string, patch: Partial<Emprendimiento>) => {
+    setState((current) => {
+      const emprendimiento = current.emprendimientos.find((item) => item.id === id);
+      const personaId = patch.emprendedorId ?? emprendimiento?.emprendedorId;
+      const persona = current.emprendedores.find((item) => item.id === personaId);
+      const timestamp = new Date().toISOString();
+
+      return withMovimiento({
+        ...current,
+        emprendimientos: current.emprendimientos.map((item) =>
+          item.id === id ? { ...item, ...patch, updatedAt: timestamp } : item,
+        ),
+        updatedAt: timestamp,
+      }, {
+        tipo: "emprendimiento",
+        accion: "Emprendimiento actualizado",
+        detalle: describeChanges(emprendimiento, patch),
+        entidadId: id,
+        personaId,
+        personaNombre: persona?.nombre,
+      }, options.updatedBy);
+    });
+  };
+
+  const eliminarEmprendimiento = (id: string) => {
+    setState((current) => {
+      const emprendimiento = current.emprendimientos.find((item) => item.id === id);
+      const persona = current.emprendedores.find((item) => item.id === emprendimiento?.emprendedorId);
+
+      return withMovimiento({
+        ...current,
+        emprendimientos: current.emprendimientos.filter((item) => item.id !== id),
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "emprendimiento",
+        accion: "Emprendimiento eliminado",
+        detalle: emprendimiento
+          ? `${emprendimiento.nombre}. Se quitaron ${emprendimiento.fotos.length} foto${emprendimiento.fotos.length === 1 ? "" : "s"} asociada${emprendimiento.fotos.length === 1 ? "" : "s"}.`
+          : "Se elimino un emprendimiento.",
+        entidadId: id,
+        personaId: persona?.id ?? emprendimiento?.emprendedorId,
+        personaNombre: persona?.nombre,
       }, options.updatedBy);
     });
   };
@@ -910,6 +1014,9 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     updateCentro,
     updatePeriodo,
     updateEmprendedor,
+    crearEmprendimiento,
+    updateEmprendimiento,
+    eliminarEmprendimiento,
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
     recalcularPagosCes,

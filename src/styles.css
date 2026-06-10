@@ -428,6 +428,11 @@ label.secondary-button:hover,
   --section-soft: #e8f2ff;
 }
 
+.section-emprendimientos {
+  --section-accent: #008c7a;
+  --section-soft: #e7f8f5;
+}
+
 .section-asistencias {
   --section-accent: #5e5ce6;
   --section-soft: #efefff;
@@ -505,6 +510,7 @@ label.secondary-button:hover,
 .summary-card,
 .payment-card,
 .person-panel,
+.venture-card,
 .backup-card {
   border: 1px solid rgba(34, 48, 44, 0.1);
   border-radius: 8px;
@@ -936,6 +942,7 @@ label.secondary-button:hover,
 }
 
 .section-personas .person-panel,
+.section-emprendimientos .venture-card,
 .section-asistencias .attendance-create,
 .section-asistencias .attendance-meeting-card,
 .section-config .config-section,
@@ -944,7 +951,8 @@ label.secondary-button:hover,
 }
 
 .payment-card header,
-.person-panel header {
+.person-panel header,
+.venture-card header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2153,6 +2161,240 @@ label.secondary-button:hover,
   padding: 10px;
 }
 
+.venture-toolbar {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.venture-toolbar .primary-button {
+  min-height: 40px;
+}
+
+.venture-summary {
+  margin-bottom: 10px;
+}
+
+.venture-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.venture-card {
+  overflow: hidden;
+  border-top: 3px solid var(--section-accent);
+}
+
+.venture-card.pausado {
+  border-top-color: var(--warning);
+}
+
+.venture-card.cerrado {
+  border-top-color: var(--muted);
+}
+
+.venture-photo {
+  position: relative;
+  display: grid;
+  min-height: 154px;
+  place-items: center;
+  background: var(--section-soft);
+  color: var(--section-accent);
+}
+
+.venture-photo img {
+  width: 100%;
+  height: 100%;
+  min-height: 154px;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+.venture-photo .badge {
+  position: absolute;
+  right: 9px;
+  top: 9px;
+  box-shadow: var(--shadow);
+}
+
+.badge.activo {
+  background: #e9f9ee;
+  color: #248a3d;
+}
+
+.badge.pausado {
+  background: #fff4df;
+  color: #b26b00;
+}
+
+.badge.cerrado {
+  background: #e5e5ea;
+  color: var(--muted);
+}
+
+.venture-body {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.venture-body h2 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.15;
+}
+
+.venture-owner {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--line-soft);
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.venture-owner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venture-description {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.venture-detail-list {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 680;
+}
+
+.venture-detail-list span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.3;
+}
+
+.venture-detail-list svg {
+  flex: 0 0 auto;
+  color: var(--section-accent);
+}
+
+.venture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.venture-actions a {
+  min-height: 34px;
+  text-decoration: none;
+}
+
+.venture-thumbs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.venture-thumbs img {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.venture-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.venture-modal {
+  width: min(760px, 100%);
+}
+
+.venture-photo-manager {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.venture-photo-manager-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.venture-photo-manager-head strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.venture-photo-manager input[type="file"] {
+  display: none;
+}
+
+.venture-photo-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.venture-photo-list figure {
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.venture-photo-list img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.venture-photo-list figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px;
+}
+
+.venture-photo-list figcaption span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2939,7 +3181,7 @@ label.secondary-button:hover,
     top: auto;
     bottom: 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 5px;
     margin: 0;
     padding: 7px 10px max(7px, env(safe-area-inset-bottom));
@@ -2957,13 +3199,13 @@ label.secondary-button:hover,
     border-color: transparent;
     background: transparent;
     color: var(--muted);
-    font-size: 0.6rem;
+    font-size: 0.56rem;
     line-height: 1;
   }
 
   .tabbar button svg {
-    width: 19px;
-    height: 19px;
+    width: 18px;
+    height: 18px;
   }
 
   .tabbar button.active {
@@ -3239,7 +3481,7 @@ label.secondary-button:hover,
 
   .tabbar {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     overflow: visible;
   }
 
@@ -3260,6 +3502,20 @@ label.secondary-button:hover,
   .people-layout {
     grid-template-columns: 280px 1fr;
     align-items: start;
+  }
+
+  .venture-toolbar {
+    grid-template-columns: minmax(260px, 420px) auto;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .venture-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .venture-photo-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .people-list {
@@ -3354,6 +3610,10 @@ label.secondary-button:hover,
 
 @media (min-width: 1040px) {
   .cards-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .venture-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
