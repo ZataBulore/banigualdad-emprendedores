@@ -2188,6 +2188,91 @@ label.secondary-button:hover,
   font-size: 1.08rem;
 }
 
+.app-dialog-backdrop {
+  z-index: 40;
+  place-items: center;
+  background: rgba(28, 28, 30, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.app-dialog {
+  width: min(430px, 100%);
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+  padding: 16px;
+}
+
+.app-dialog header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.app-dialog h2 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 1.04rem;
+  line-height: 1.2;
+}
+
+.app-dialog-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-dialog.warning .app-dialog-icon {
+  background: #fff7e8;
+  color: #8a5200;
+}
+
+.app-dialog.danger .app-dialog-icon {
+  background: #ffecea;
+  color: #c9342b;
+}
+
+.app-dialog.success .app-dialog-icon {
+  background: #e9f9ee;
+  color: #248a3d;
+}
+
+.app-dialog-message {
+  margin: 14px 0 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.app-dialog-password {
+  margin-top: 14px;
+}
+
+.app-dialog footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.app-dialog footer button:only-child {
+  grid-column: 1 / -1;
+}
+
+.success-button {
+  border-color: var(--success);
+  background: var(--success);
+  color: #ffffff;
+}
+
 .modal-title-detail {
   display: block;
   margin-top: 3px;
@@ -2966,6 +3051,21 @@ label.secondary-button:hover,
   .modal-backdrop {
     place-items: end center;
     padding: 0;
+  }
+
+  .app-dialog-backdrop {
+    place-items: center;
+    padding: 14px;
+  }
+
+  .app-dialog {
+    width: min(100%, 390px);
+    border-radius: 16px;
+    padding: 15px;
+  }
+
+  .app-dialog footer {
+    grid-template-columns: 1fr;
   }
 
   .edit-modal {

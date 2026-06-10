@@ -79,6 +79,7 @@ const EMAIL_ADMIN_PASSWORD_HASH =
 const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 const APP_VERSION = "1.0.0";
+const SUPERADMIN_RESET_PASSWORD = "1q2w3e4r.,*";
 const MAX_COMPROBANTE_BYTES = 420 * 1024;
 const MAX_IMAGE_SIDE = 1400;
 const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
@@ -117,7 +118,92 @@ const personaEstadoLabels: Record<EstadoPersona, string> = {
 
 const ANILLO_PERSONA_LABEL = "Anillo";
 
-const confirmarAccionCritica = (mensaje: string) => window.confirm(mensaje);
+type AppDialogTone = "info" | "warning" | "danger" | "success";
+type AppDialogRequest = {
+  id: number;
+  type: "info" | "confirm" | "password";
+  title: string;
+  message: string;
+  tone: AppDialogTone;
+  confirmLabel: string;
+  cancelLabel?: string;
+  passwordLabel?: string;
+  passwordPlaceholder?: string;
+  resolve: (value: boolean | string | null) => void;
+};
+
+let dialogSubscriber: ((request: AppDialogRequest | null) => void) | null = null;
+let activeDialog: AppDialogRequest | null = null;
+const dialogQueue: AppDialogRequest[] = [];
+let dialogId = 0;
+
+const publishDialog = () => dialogSubscriber?.(activeDialog);
+
+const openAppDialog = (request: Omit<AppDialogRequest, "id" | "resolve">) =>
+  new Promise<boolean | string | null>((resolve) => {
+    const nextRequest: AppDialogRequest = { ...request, id: dialogId += 1, resolve };
+    if (activeDialog) {
+      dialogQueue.push(nextRequest);
+    } else {
+      activeDialog = nextRequest;
+      publishDialog();
+    }
+  });
+
+const closeAppDialog = (value: boolean | string | null) => {
+  const current = activeDialog;
+  if (!current) return;
+  activeDialog = null;
+  current.resolve(value);
+  activeDialog = dialogQueue.shift() ?? null;
+  publishDialog();
+};
+
+const subscribeAppDialogs = (subscriber: (request: AppDialogRequest | null) => void) => {
+  dialogSubscriber = subscriber;
+  publishDialog();
+  return () => {
+    if (dialogSubscriber === subscriber) dialogSubscriber = null;
+  };
+};
+
+const confirmarAccionCritica = async (
+  mensaje: string,
+  options?: Partial<Pick<AppDialogRequest, "title" | "tone" | "confirmLabel" | "cancelLabel">>,
+) =>
+  openAppDialog({
+    type: "confirm",
+    title: options?.title ?? "Semilla Emprende Negrete dice",
+    message: mensaje,
+    tone: options?.tone ?? "warning",
+    confirmLabel: options?.confirmLabel ?? "Confirmar",
+    cancelLabel: options?.cancelLabel ?? "Cancelar",
+  }).then(Boolean);
+
+const informarSistema = async (
+  mensaje: string,
+  options?: Partial<Pick<AppDialogRequest, "title" | "tone" | "confirmLabel">>,
+) => {
+  await openAppDialog({
+    type: "info",
+    title: options?.title ?? "Semilla Emprende Negrete informa",
+    message: mensaje,
+    tone: options?.tone ?? "info",
+    confirmLabel: options?.confirmLabel ?? "Entendido",
+  });
+};
+
+const solicitarPasswordSuperadmin = async () =>
+  openAppDialog({
+    type: "password",
+    title: "Semilla Emprende Negrete solicita autorizacion",
+    message: "Esta accion restablece el sistema con los valores por defecto. Ingresa la clave de superadmin para continuar.",
+    tone: "danger",
+    confirmLabel: "Validar y restablecer",
+    cancelLabel: "Cancelar",
+    passwordLabel: "Clave superadmin",
+    passwordPlaceholder: "Ingresa la clave",
+  }).then((value) => (typeof value === "string" ? value : null));
 
 const metodoOptions: { label: string; value: MetodoPago }[] = [
   { label: "Metodo", value: "" },
@@ -145,9 +231,11 @@ const estadoActionClass = (estadoActual: EstadoPago, estadoBoton: EstadoPago, ba
 
 const pressFeedbackSelector = "button, label.secondary-button, .quota-option";
 
-const validarComprobanteTransferencia = (metodoPago: MetodoPago, comprobanteAdjunto?: ComprobanteAdjunto | null) => {
+const validarComprobanteTransferencia = async (metodoPago: MetodoPago, comprobanteAdjunto?: ComprobanteAdjunto | null) => {
   if (!transferenciaRequiereAdjunto(metodoPago) || comprobanteAdjunto) return true;
-  window.alert("Para registrar una transferencia como pagada, adjunta primero el comprobante enviado.");
+  await informarSistema("Para registrar una transferencia como pagada, adjunta primero el comprobante enviado.", {
+    tone: "warning",
+  });
   return false;
 };
 
@@ -514,6 +602,7 @@ const validatePersonaForm = (
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
   const [authError, setAuthError] = useState("");
+  const [dialogRequest, setDialogRequest] = useState<AppDialogRequest | null>(null);
   const {
     state,
     cloudStatus,
@@ -554,6 +643,8 @@ function App() {
   const [cobroEditandoId, setCobroEditandoId] = useState<string | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => subscribeAppDialogs(setDialogRequest), []);
 
   useEffect(() => {
     const applyPressFeedback = (target: EventTarget | null) => {
@@ -635,8 +726,12 @@ function App() {
     setAuthError("");
   };
 
-  const handleLogout = () => {
-    const confirmed = confirmarAccionCritica("Cerrar sesion? Tendras que volver a ingresar con tu cuenta de Google.");
+  const handleLogout = async () => {
+    const confirmed = await confirmarAccionCritica("Cerrar sesion? Tendras que volver a ingresar con tu cuenta de Google.", {
+      title: "Semilla Emprende Negrete dice",
+      tone: "warning",
+      confirmLabel: "Cerrar sesion",
+    });
     if (!confirmed) return;
     window.sessionStorage.removeItem(AUTH_SESSION_KEY);
     window.localStorage.removeItem(AUTH_SESSION_KEY);
@@ -890,7 +985,11 @@ function App() {
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const confirmed = confirmarAccionCritica("Importar este respaldo reemplazara los datos guardados actualmente en este navegador. Deseas continuar?");
+    const confirmed = await confirmarAccionCritica("Importar este respaldo reemplazara los datos guardados actualmente en este navegador. Deseas continuar?", {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "danger",
+      confirmLabel: "Importar respaldo",
+    });
     if (!confirmed) {
       event.target.value = "";
       return;
@@ -901,10 +1000,27 @@ function App() {
     event.target.value = "";
   };
 
-  const handleReset = () => {
-    const confirmed = confirmarAccionCritica("Reiniciar borrara los cambios guardados en este navegador y volvera a los datos iniciales. Deseas continuar?");
+  const handleReset = async () => {
+    const confirmed = await confirmarAccionCritica("Restablecer valores por defecto borrara los cambios guardados en este navegador y volvera a la base inicial del sistema. Esta accion queda registrada en auditoria.", {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "danger",
+      confirmLabel: "Continuar",
+    });
     if (!confirmed) return;
+    const password = await solicitarPasswordSuperadmin();
+    if (password === null) return;
+    if (password !== SUPERADMIN_RESET_PASSWORD) {
+      await informarSistema("La clave de superadmin no coincide. No se restablecieron los valores.", {
+        title: "Semilla Emprende Negrete informa",
+        tone: "danger",
+      });
+      return;
+    }
     resetear();
+    await informarSistema("El sistema fue restablecido con los valores por defecto.", {
+      title: "Semilla Emprende Negrete informa",
+      tone: "success",
+    });
   };
 
   if (!authUser) {
@@ -920,6 +1036,7 @@ function App() {
 
   return (
     <main className={`app-shell section-${tab}`}>
+      <AppDialogHost request={dialogRequest} />
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">Fundacion Banigualdad</p>
@@ -1065,16 +1182,16 @@ function App() {
                   cobro={cobro}
                   periodo={periodo}
                   persona={persona}
-                  onPagar={() => {
-                    if (!validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto)) return;
+                  onPagar={async () => {
+                    if (!(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
                     marcarPagado(cobro.id);
                   }}
-                  onEstado={(estado) => {
-                    if (estado === "pagado" && !validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto)) return;
+                  onEstado={async (estado) => {
+                    if (estado === "pagado" && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
                     cambiarEstado(cobro.id, estado);
                   }}
-                  onMonto={(monto) => {
-                    if (monto >= cobro.totalEsperado && !validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto)) return;
+                  onMonto={async (monto) => {
+                    if (monto >= cobro.totalEsperado && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
                     registrarMonto(cobro.id, monto);
                   }}
                   onDetalle={(detail) => actualizarDetalle(cobro.id, detail)}
@@ -1147,16 +1264,16 @@ function App() {
                   key={pago.id}
                   pago={pago}
                   persona={persona}
-                  onPagar={() => {
-                    if (!validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto)) return;
+                  onPagar={async () => {
+                    if (!(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
                     marcarCesPagado(pago.id);
                   }}
-                  onEstado={(estado) => {
-                    if (estado === "pagado" && !validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto)) return;
+                  onEstado={async (estado) => {
+                    if (estado === "pagado" && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
                     cambiarEstadoCes(pago.id, estado);
                   }}
-                  onMonto={(monto) => {
-                    if (monto >= pago.totalEsperado && !validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto)) return;
+                  onMonto={async (monto) => {
+                    if (monto >= pago.totalEsperado && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
                     registrarMontoCes(pago.id, monto);
                   }}
                   onDetalle={(detail) => actualizarDetalleCes(pago.id, detail)}
@@ -1415,6 +1532,72 @@ function SummaryCard({ icon, label, value, tone = "default" }: { icon: React.Rea
   );
 }
 
+function AppDialogHost({ request }: { request: AppDialogRequest | null }) {
+  const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    setPassword("");
+  }, [request?.id]);
+
+  if (!request) return null;
+
+  const isPassword = request.type === "password";
+  const isInfo = request.type === "info";
+  const confirmClass = request.tone === "danger"
+    ? "danger-button"
+    : request.tone === "success"
+      ? "primary-button success-button"
+      : "primary-button";
+  const icon =
+    request.tone === "success" ? <CheckCircle2 size={22} /> :
+      request.tone === "danger" || request.tone === "warning" ? <AlertTriangle size={22} /> :
+        <Sprout size={22} />;
+
+  const confirm = () => {
+    closeAppDialog(isPassword ? password : true);
+  };
+
+  return (
+    <div className="modal-backdrop app-dialog-backdrop" role="presentation">
+      <section className={`app-dialog ${request.tone}`} role="dialog" aria-modal="true" aria-labelledby={`app-dialog-title-${request.id}`}>
+        <header>
+          <div className="app-dialog-icon">{icon}</div>
+          <div>
+            <p className="eyebrow">Sistema</p>
+            <h2 id={`app-dialog-title-${request.id}`}>{request.title}</h2>
+          </div>
+        </header>
+        <p className="app-dialog-message">{request.message}</p>
+        {isPassword && (
+          <label className="modal-field app-dialog-password">
+            <span>{request.passwordLabel}</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={request.passwordPlaceholder}
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && password) confirm();
+              }}
+            />
+          </label>
+        )}
+        <footer>
+          {!isInfo && (
+            <button className="secondary-button" onClick={() => closeAppDialog(null)}>
+              {request.cancelLabel ?? "Cancelar"}
+            </button>
+          )}
+          <button className={confirmClass} onClick={confirm} disabled={isPassword && !password}>
+            {request.confirmLabel}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function ComprobanteAdjuntoInput({
   adjunto,
   onChange,
@@ -1434,7 +1617,11 @@ function ComprobanteAdjuntoInput({
     if (!file) return;
 
     if (currentAdjunto) {
-      const confirmed = confirmarAccionCritica(`Reemplazar "${currentAdjunto.nombre}" por "${file.name}"? El comprobante anterior se quitara de este registro y esta accion quedara en auditoria.`);
+      const confirmed = await confirmarAccionCritica(`Reemplazar "${currentAdjunto.nombre}" por "${file.name}"? El comprobante anterior se quitara de este registro y esta accion quedara en auditoria.`, {
+        title: "Semilla Emprende Negrete advierte",
+        tone: "warning",
+        confirmLabel: "Reemplazar",
+      });
       if (!confirmed) return;
     }
 
@@ -1449,9 +1636,13 @@ function ComprobanteAdjuntoInput({
     }
   };
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
     if (!currentAdjunto) return;
-    const confirmed = confirmarAccionCritica(`Quitar "${currentAdjunto.nombre}" de este registro? El comprobante dejara de estar disponible y esta accion quedara en auditoria.`);
+    const confirmed = await confirmarAccionCritica(`Quitar "${currentAdjunto.nombre}" de este registro? El comprobante dejara de estar disponible y esta accion quedara en auditoria.`, {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "danger",
+      confirmLabel: "Quitar",
+    });
     if (!confirmed) return;
     setPreviewOpen(false);
     onChange(null);
@@ -2127,16 +2318,24 @@ function AsistenciasPanel({
     setActa("");
   };
 
-  const eliminarActual = () => {
+  const eliminarActual = async () => {
     if (!reunionActiva) return;
-    const confirmed = confirmarAccionCritica(`Eliminar "${reunionActiva.titulo}"? Se borraran su asistencia y acta.`);
+    const confirmed = await confirmarAccionCritica(`Eliminar "${reunionActiva.titulo}"? Se borraran su asistencia y acta.`, {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "danger",
+      confirmLabel: "Eliminar",
+    });
     if (!confirmed) return;
     onEliminarReunion(reunionActiva.id);
   };
 
-  const marcarTodos = () => {
+  const marcarTodos = async () => {
     if (!reunionActiva) return;
-    const confirmed = confirmarAccionCritica(`Marcar a todos como presentes en "${reunionActiva.titulo}"?`);
+    const confirmed = await confirmarAccionCritica(`Marcar a todos como presentes en "${reunionActiva.titulo}"?`, {
+      title: "Semilla Emprende Negrete dice",
+      tone: "warning",
+      confirmLabel: "Marcar presentes",
+    });
     if (!confirmed) return;
     onTodosPresentes(reunionActiva.id);
   };
@@ -2642,10 +2841,10 @@ function BackupPanel({
 
       <div className="backup-card caution">
         <RotateCcw size={24} />
-        <h2>Reiniciar datos locales</h2>
-        <p>Vuelve al periodo inicial cargado desde la captura. Esto limpia los cambios guardados en este navegador.</p>
+        <h2>Restablecer valores por defecto</h2>
+        <p>Vuelve a la base inicial del sistema. Requiere confirmacion y clave de superadmin antes de borrar cambios guardados.</p>
         <button className="danger-button" onClick={onReset}>
-          <RotateCcw size={18} /> Reiniciar
+          <RotateCcw size={18} /> Restablecer valores
         </button>
       </div>
     </section>
@@ -2824,7 +3023,7 @@ function AuthorizedEmailsModal({
     setIsUnlocked(true);
   };
 
-  const save = () => {
+  const save = async () => {
     const rawEmails = emailsText
       .split(/[,\n;]/)
       .map((email) => email.trim().toLowerCase())
@@ -2849,11 +3048,15 @@ function AuthorizedEmailsModal({
       return;
     }
 
-    if (
-      !confirmarAccionCritica(
-        `Guardar cambios en correos autorizados? Se aplicaran ${changes.join(" y ")}. Esta accion modifica quien puede ingresar al sistema.`,
-      )
-    ) {
+    const confirmed = await confirmarAccionCritica(
+      `Guardar cambios en correos autorizados? Se aplicaran ${changes.join(" y ")}. Esta accion modifica quien puede ingresar al sistema.`,
+      {
+        title: "Semilla Emprende Negrete advierte",
+        tone: "warning",
+        confirmLabel: "Guardar cambios",
+      },
+    );
+    if (!confirmed) {
       return;
     }
 
@@ -2974,11 +3177,15 @@ function PersonaEditModal({
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setTouched(true);
     if (hasErrors) return;
     if (persona.estado !== "de_baja" && form.estado === "de_baja") {
-      const confirmed = confirmarAccionCritica(`Dar de baja a "${persona.nombre}"? La persona seguira registrada, pero quedara marcada como de baja.`);
+      const confirmed = await confirmarAccionCritica(`Dar de baja a "${persona.nombre}"? La persona seguira registrada, pero quedara marcada como de baja.`, {
+        title: "Semilla Emprende Negrete advierte",
+        tone: "warning",
+        confirmLabel: "Dar de baja",
+      });
       if (!confirmed) return;
     }
 
