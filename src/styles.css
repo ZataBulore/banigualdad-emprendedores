@@ -1295,17 +1295,43 @@ button {
   align-items: center;
 }
 
+.contact-panel header > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .contact-panel h3 {
   margin: 2px 0;
   color: var(--text);
   font-size: 0.95rem;
 }
 
-.contact-panel span,
 .contact-empty {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 650;
+}
+
+.contact-lines {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.contact-lines span {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.contact-lines b {
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .contact-empty {

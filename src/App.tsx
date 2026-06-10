@@ -305,11 +305,6 @@ const buildWhatsappUrl = (telefono: string, message: string) => {
 
 const getSecondaryContactName = (persona: Emprendedor) => (persona.nombreContactoSecundario ?? "").trim();
 
-const getSecondaryContactLabel = (persona: Emprendedor) => {
-  const nombreContacto = getSecondaryContactName(persona);
-  return nombreContacto ? `Secundario (${nombreContacto})` : "Secundario";
-};
-
 const buildSecondaryAttendanceNote = (persona: Emprendedor) => {
   const nombreContacto = getSecondaryContactName(persona);
   if (!nombreContacto) return "";
@@ -319,7 +314,7 @@ const buildSecondaryAttendanceNote = (persona: Emprendedor) => {
 const getWhatsappContacts = (persona: Emprendedor) =>
   [
     { key: "principal", label: "Principal", value: persona.whatsapp ?? "" },
-    { key: "secundario", label: getSecondaryContactLabel(persona), value: persona.whatsappSecundario ?? "" },
+    { key: "secundario", label: "Secundario", value: persona.whatsappSecundario ?? "" },
   ].filter((contacto) => Boolean(normalizeWhatsapp(contacto.value)));
 
 const buildWhatsappMessages = (
@@ -1536,13 +1531,22 @@ function PersonaPanel({
           <div>
             <p className="eyebrow">Contacto</p>
             <h3>WhatsApp</h3>
-            <span>Principal: {persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}</span>
-            <span>Secundario: {persona.whatsappSecundario ? formatWhatsapp(persona.whatsappSecundario) : "Sin numero registrado"}</span>
-            {persona.whatsappSecundario && (
+            <div className="contact-lines">
               <span>
-                Contacto secundario: {getSecondaryContactName(persona) || "misma persona"}
+                <b>Principal</b>
+                {persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}
               </span>
-            )}
+              <span>
+                <b>Secundario</b>
+                {persona.whatsappSecundario ? formatWhatsapp(persona.whatsappSecundario) : "Sin numero registrado"}
+              </span>
+              {persona.whatsappSecundario && (
+                <span>
+                  <b>Usado por</b>
+                  {getSecondaryContactName(persona) || "Misma persona"}
+                </span>
+              )}
+            </div>
           </div>
           <Phone size={20} />
         </header>
