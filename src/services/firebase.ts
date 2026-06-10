@@ -3,14 +3,26 @@ import { getAuth, GoogleAuthProvider, signInWithCredential, signOut } from "fire
 import { doc, getDoc, getFirestore, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 import type { TesoreriaState } from "../types/tesoreria";
 
+const getEnvValue = (key: string) => String(import.meta.env[key] ?? "").trim();
+
+const firebaseEnvKeys = [
+  "VITE_FIREBASE_API_KEY",
+  "VITE_FIREBASE_AUTH_DOMAIN",
+  "VITE_FIREBASE_PROJECT_ID",
+  "VITE_FIREBASE_APP_ID",
+] as const;
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "",
+  apiKey: getEnvValue("VITE_FIREBASE_API_KEY"),
+  authDomain: getEnvValue("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: getEnvValue("VITE_FIREBASE_PROJECT_ID"),
+  appId: getEnvValue("VITE_FIREBASE_APP_ID"),
 };
 
-export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
+export const getFirebaseMissingConfig = () =>
+  firebaseEnvKeys.filter((key) => !getEnvValue(key));
+
+export const isFirebaseConfigured = getFirebaseMissingConfig().length === 0;
 
 export const FIREBASE_STATE_PATH = {
   collection: import.meta.env.VITE_FIREBASE_COLLECTION || "centros",
@@ -75,4 +87,3 @@ export const subscribeRemoteState = (
     },
   );
 };
-

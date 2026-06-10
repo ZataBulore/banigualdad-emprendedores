@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { configuracionInicial, crearPagosCes, getMontoCes, tesoreriaInicial } from "../data/tesoreriaInicial";
-import { isFirebaseConfigured, readRemoteState, saveRemoteState, subscribeRemoteState } from "../services/firebase";
+import {
+  getFirebaseMissingConfig,
+  isFirebaseConfigured,
+  readRemoteState,
+  saveRemoteState,
+  subscribeRemoteState,
+} from "../services/firebase";
 import type {
   Centro,
   CobroSemanal,
@@ -302,11 +308,15 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
   useEffect(() => {
     if (!isFirebaseConfigured) {
       setCloudStatus("local");
+      setCloudError(`Faltan variables Firebase: ${getFirebaseMissingConfig().join(", ")}.`);
+      remoteReadyRef.current = false;
       return;
     }
 
     if (!options.syncEnabled) {
       setCloudStatus("connecting");
+      setCloudError("Inicia sesion con Google para activar la sincronizacion con Firebase.");
+      remoteReadyRef.current = false;
       return;
     }
 
@@ -315,14 +325,15 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     setCloudError("");
 
     readRemoteState()
-      .then((remoteState) => {
+      .then(async (remoteState) => {
         if (cancelled) return;
         if (remoteState) {
           applyingRemoteRef.current = true;
           setState(migrateState(remoteState));
         } else {
-          void saveRemoteState(state, options.updatedBy);
+          await saveRemoteState(state, options.updatedBy);
         }
+        if (cancelled) return;
         remoteReadyRef.current = true;
         setCloudStatus("synced");
       })
@@ -673,19 +684,19 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
 
   const actualizarDetalle = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
   ) => updateCobro(id, detail, "Detalle de cobro actualizado");
 
   const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch, "Cobro editado");
 
   const actualizarDetalleCes = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
   ) => updateCes(id, detail, "Detalle CES actualizado");
 
   const registrarPagoMultiple = (
     ids: string[],
-    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto; observacion?: string },
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
   ) => {
     const selected = new Set(ids);
 
@@ -706,7 +717,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
             fechaPago: detail.fechaPago,
             metodoPago: detail.metodoPago,
             referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
-            comprobanteAdjunto: detail.metodoPago === "efectivo" ? undefined : detail.comprobanteAdjunto,
+            comprobanteAdjunto: detail.comprobanteAdjunto ?? null,
             observacion: detail.observacion?.trim() || cobro.observacion,
             confirmadoPorTesorero: true,
           };

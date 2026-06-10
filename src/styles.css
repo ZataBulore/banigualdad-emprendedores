@@ -2282,6 +2282,24 @@ button {
   white-space: nowrap;
 }
 
+.receipt-help {
+  margin: 0;
+  border: 1px solid rgba(52, 199, 89, 0.22);
+  border-radius: 8px;
+  background: #f0fbf3;
+  color: #248a3d;
+  padding: 8px;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.receipt-help.warning {
+  border-color: rgba(255, 149, 0, 0.32);
+  background: #fff7e8;
+  color: #8a5200;
+}
+
 .attachment-control {
   display: grid;
   gap: 7px;
@@ -2354,6 +2372,116 @@ button {
 
 .attachment-error {
   color: var(--danger);
+}
+
+.attachment-preview-modal {
+  display: grid;
+  width: min(920px, calc(100vw - 20px));
+  max-height: calc(100dvh - 24px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.28);
+  padding: 12px;
+}
+
+.attachment-preview-modal header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.attachment-preview-modal h2 {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.attachment-preview-modal header span,
+.preview-toolbar span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.preview-toolbar {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) minmax(118px, 1fr);
+  gap: 7px;
+  align-items: center;
+  margin: 10px 0;
+}
+
+.preview-toolbar .secondary-button {
+  min-height: 36px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.zoom-controls {
+  display: grid;
+  grid-template-columns: 42px minmax(54px, 1fr) 42px;
+  align-items: center;
+  min-height: 36px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.zoom-controls button {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+}
+
+.zoom-controls button:first-child {
+  border-right: 1px solid var(--line-soft);
+}
+
+.zoom-controls button:last-child {
+  border-left: 1px solid var(--line-soft);
+}
+
+.preview-toolbar span {
+  text-align: center;
+}
+
+.preview-stage {
+  min-height: 260px;
+  max-height: min(68dvh, 680px);
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #f7f7fb;
+  padding: 14px;
+}
+
+.preview-stage img,
+.preview-stage iframe {
+  display: block;
+  width: min(100%, 760px);
+  min-height: 520px;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 8px;
+  background: #ffffff;
+  transform-origin: top center;
+}
+
+.preview-stage img {
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
 }
 
 .modal-field.invalid small,

@@ -66,7 +66,7 @@ export interface CobroSemanal {
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;
-  comprobanteAdjunto?: ComprobanteAdjunto;
+  comprobanteAdjunto?: ComprobanteAdjunto | null;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }
@@ -83,7 +83,7 @@ export interface PagoCes {
   fechaPago: string;
   metodoPago: MetodoPago;
   referenciaPago: string;
-  comprobanteAdjunto?: ComprobanteAdjunto;
+  comprobanteAdjunto?: ComprobanteAdjunto | null;
   observacion: string;
   confirmadoPorTesorero: boolean;
 }
