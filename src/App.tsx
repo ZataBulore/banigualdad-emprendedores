@@ -140,6 +140,9 @@ const getReferenciaPlaceholder = (metodoPago: MetodoPago) => {
 
 const transferenciaRequiereAdjunto = (metodoPago: MetodoPago) => metodoPago === "transferencia";
 
+const estadoActionClass = (estadoActual: EstadoPago, estadoBoton: EstadoPago, base = "") =>
+  ["state-action", base, estadoActual === estadoBoton ? "action-selected" : ""].filter(Boolean).join(" ");
+
 const validarComprobanteTransferencia = (metodoPago: MetodoPago, comprobanteAdjunto?: ComprobanteAdjunto | null) => {
   if (!transferenciaRequiereAdjunto(metodoPago) || comprobanteAdjunto) return true;
   window.alert("Para registrar una transferencia como pagada, adjunta primero el comprobante enviado.");
@@ -1639,12 +1642,12 @@ function CobroCard({
       </label>
 
       <div className="card-actions">
-        <button className="pay-button" onClick={onPagar}>
+        <button className={estadoActionClass(cobro.estadoPago, "pagado", "pay-button")} onClick={onPagar} aria-pressed={cobro.estadoPago === "pagado"}>
           <Check size={18} /> Pagado
         </button>
-        <button onClick={() => onEstado("parcial")}>Parcial</button>
-        <button onClick={() => onEstado("pendiente")}>Pendiente</button>
-        <button onClick={() => onEstado("atrasado")}>
+        <button className={estadoActionClass(cobro.estadoPago, "parcial")} onClick={() => onEstado("parcial")} aria-pressed={cobro.estadoPago === "parcial"}>Parcial</button>
+        <button className={estadoActionClass(cobro.estadoPago, "pendiente")} onClick={() => onEstado("pendiente")} aria-pressed={cobro.estadoPago === "pendiente"}>Pendiente</button>
+        <button className={estadoActionClass(cobro.estadoPago, "atrasado")} onClick={() => onEstado("atrasado")} aria-pressed={cobro.estadoPago === "atrasado"}>
           <AlertTriangle size={17} /> Atraso
         </button>
       </div>
@@ -1682,7 +1685,7 @@ function CobroCard({
       <section className={cobro.metodoPago === "efectivo" ? "receipt-box cash" : "receipt-box"}>
         <div className="receipt-heading">
           <span><ReceiptText size={15} /> Comprobante</span>
-          <button type="button" className="cash-toggle" onClick={marcarEfectivo}>
+          <button type="button" className={cobro.metodoPago === "efectivo" ? "cash-toggle active" : "cash-toggle"} onClick={marcarEfectivo} aria-pressed={cobro.metodoPago === "efectivo"}>
             <Check size={15} /> Efectivo
           </button>
         </div>
@@ -1951,12 +1954,12 @@ function CesCard({
       </label>
 
       <div className="card-actions">
-        <button className="pay-button" onClick={onPagar}>
+        <button className={estadoActionClass(pago.estadoPago, "pagado", "pay-button")} onClick={onPagar} aria-pressed={pago.estadoPago === "pagado"}>
           <Check size={18} /> Pagado
         </button>
-        <button onClick={() => onEstado("parcial")}>Parcial</button>
-        <button onClick={() => onEstado("pendiente")}>Pendiente</button>
-        <button onClick={() => onEstado("atrasado")}>
+        <button className={estadoActionClass(pago.estadoPago, "parcial")} onClick={() => onEstado("parcial")} aria-pressed={pago.estadoPago === "parcial"}>Parcial</button>
+        <button className={estadoActionClass(pago.estadoPago, "pendiente")} onClick={() => onEstado("pendiente")} aria-pressed={pago.estadoPago === "pendiente"}>Pendiente</button>
+        <button className={estadoActionClass(pago.estadoPago, "atrasado")} onClick={() => onEstado("atrasado")} aria-pressed={pago.estadoPago === "atrasado"}>
           <AlertTriangle size={17} /> Atraso
         </button>
       </div>
@@ -1994,7 +1997,7 @@ function CesCard({
       <section className={pago.metodoPago === "efectivo" ? "receipt-box cash" : "receipt-box"}>
         <div className="receipt-heading">
           <span><ReceiptText size={15} /> Comprobante</span>
-          <button type="button" className="cash-toggle" onClick={marcarEfectivo}>
+          <button type="button" className={pago.metodoPago === "efectivo" ? "cash-toggle active" : "cash-toggle"} onClick={marcarEfectivo} aria-pressed={pago.metodoPago === "efectivo"}>
             <Check size={15} /> Efectivo
           </button>
         </div>
@@ -3275,7 +3278,7 @@ function CobroEditModal({
         <section className={touched && missingTransferAttachment ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
           <div className="receipt-heading">
             <span><ReceiptText size={15} /> Comprobante</span>
-            <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
+            <button type="button" className={form.metodoPago === "efectivo" ? "cash-toggle active" : "cash-toggle"} onClick={() => handleMetodo("efectivo")} aria-pressed={form.metodoPago === "efectivo"}>
               <Check size={15} /> Efectivo
             </button>
           </div>
@@ -3501,7 +3504,7 @@ function PagoMultipleModal({
           <section className={touched && missingTransferAttachment ? "receipt-box modal-receipt invalid" : "receipt-box modal-receipt"}>
             <div className="receipt-heading">
               <span><ReceiptText size={15} /> Comprobante</span>
-              <button type="button" className="cash-toggle" onClick={() => handleMetodo("efectivo")}>
+              <button type="button" className={metodoPago === "efectivo" ? "cash-toggle active" : "cash-toggle"} onClick={() => handleMetodo("efectivo")} aria-pressed={metodoPago === "efectivo"}>
                 <Check size={15} /> Efectivo
               </button>
             </div>
