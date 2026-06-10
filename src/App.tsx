@@ -40,7 +40,7 @@ import { getPeriodoTotals } from "./utils/totals";
 type Tab = "cobros" | "ces" | "personas" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
 type FiltroEstado = "todos" | EstadoPago;
-type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
+type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GoogleCredentialResponse = { credential?: string };
@@ -263,6 +263,7 @@ const matchesPersonaSearch = (
     persona.nombre,
     persona.rut,
     persona.whatsapp,
+    persona.whatsappSecundario,
     personaEstadoLabels[persona.estado],
     persona.fechaBaja,
     persona.motivoBaja,
@@ -300,6 +301,12 @@ const buildWhatsappUrl = (telefono: string, message: string) => {
   if (!normalized) return "";
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 };
+
+const getWhatsappContacts = (persona: Emprendedor) =>
+  [
+    { key: "principal", label: "Principal", value: persona.whatsapp ?? "" },
+    { key: "secundario", label: "Secundario", value: persona.whatsappSecundario ?? "" },
+  ].filter((contacto) => Boolean(normalizeWhatsapp(contacto.value)));
 
 const buildWhatsappMessages = (
   persona: Emprendedor,
@@ -368,7 +375,11 @@ const validatePersonaForm = (
   }
 
   if (!isValidWhatsapp(form.whatsapp)) {
-    errors.whatsapp = "Ingresa un WhatsApp chileno valido, por ejemplo +56 9 1234 5678.";
+    errors.whatsapp = "Ingresa un WhatsApp principal chileno valido, por ejemplo +56 9 1234 5678.";
+  }
+
+  if (!isValidWhatsapp(form.whatsappSecundario)) {
+    errors.whatsappSecundario = "Ingresa un WhatsApp secundario chileno valido, por ejemplo +56 9 1234 5678.";
   }
 
   return errors;
@@ -602,7 +613,7 @@ function App() {
     });
 
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "observacion", "acta"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -613,6 +624,7 @@ function App() {
           persona?.nombre ?? "",
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
+          persona?.whatsappSecundario ?? "",
           persona ? personaEstadoLabels[persona.estado] : "",
           persona?.fechaBaja ?? "",
           persona?.motivoBaja ?? "",
@@ -638,6 +650,7 @@ function App() {
           persona?.nombre ?? "",
           persona?.rut ?? "",
           persona?.whatsapp ?? "",
+          persona?.whatsappSecundario ?? "",
           persona ? personaEstadoLabels[persona.estado] : "",
           persona?.fechaBaja ?? "",
           persona?.motivoBaja ?? "",
@@ -664,6 +677,7 @@ function App() {
             persona?.nombre ?? "",
             persona?.rut ?? "",
             persona?.whatsapp ?? "",
+            persona?.whatsappSecundario ?? "",
             persona ? personaEstadoLabels[persona.estado] : "",
             persona?.fechaBaja ?? "",
             persona?.motivoBaja ?? "",
@@ -1460,7 +1474,13 @@ function PersonaPanel({
   const whatsappMessages = contactoCobro
     ? buildWhatsappMessages(persona, contactoCobro.cobro, contactoCobro.periodo)
     : buildWhatsappMessages(persona);
-  const hasWhatsapp = Boolean(normalizeWhatsapp(persona.whatsapp));
+  const whatsappContacts = getWhatsappContacts(persona);
+  const hasWhatsapp = whatsappContacts.length > 0;
+  const messageActions = [
+    { key: "proximo", label: "Pago pronto", icon: <MessageCircle size={17} />, message: whatsappMessages.proximo },
+    { key: "atrasado", label: "Atraso", icon: <AlertTriangle size={17} />, message: whatsappMessages.atrasado },
+    { key: "ultimoDia", label: "Ultimo dia", icon: <Send size={17} />, message: whatsappMessages.ultimoDia },
+  ];
 
   return (
     <article className="person-panel">
@@ -1495,24 +1515,28 @@ function PersonaPanel({
           <div>
             <p className="eyebrow">Contacto</p>
             <h3>WhatsApp</h3>
-            <span>{persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}</span>
+            <span>Principal: {persona.whatsapp ? formatWhatsapp(persona.whatsapp) : "Sin numero registrado"}</span>
+            <span>Secundario: {persona.whatsappSecundario ? formatWhatsapp(persona.whatsappSecundario) : "Sin numero registrado"}</span>
           </div>
           <Phone size={20} />
         </header>
         {hasWhatsapp ? (
           <div className="whatsapp-actions">
-            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.proximo)} target="_blank" rel="noreferrer">
-              <MessageCircle size={17} /> Notificar pago pronto
-            </a>
-            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.atrasado)} target="_blank" rel="noreferrer">
-              <AlertTriangle size={17} /> Notificar atraso
-            </a>
-            <a href={buildWhatsappUrl(persona.whatsapp ?? "", whatsappMessages.ultimoDia)} target="_blank" rel="noreferrer">
-              <Send size={17} /> Notificar ultimo dia
-            </a>
+            {messageActions.flatMap((action) =>
+              whatsappContacts.map((contacto) => (
+                <a
+                  key={`${action.key}-${contacto.key}`}
+                  href={buildWhatsappUrl(contacto.value, action.message)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {action.icon} {action.label} - {contacto.label}
+                </a>
+              )),
+            )}
           </div>
         ) : (
-          <p className="contact-empty">Agrega el numero desde el lapiz de cualquier tarjeta o desde Config.</p>
+          <p className="contact-empty">Agrega el numero principal o secundario desde el lapiz de cualquier tarjeta o desde Config.</p>
         )}
       </section>
 
@@ -2165,7 +2189,8 @@ function ConfigPanel({
             <article className="person-config-card" key={persona.id}>
               <ConfigInput label="Nombre" value={persona.nombre} onChange={(value) => onPersona(persona.id, { nombre: value })} />
               <ConfigInput label="RUT" value={persona.rut} onChange={(value) => onPersona(persona.id, { rut: value })} />
-              <ConfigInput label="WhatsApp" value={persona.whatsapp ?? ""} onChange={(value) => onPersona(persona.id, { whatsapp: value })} />
+              <ConfigInput label="WhatsApp principal" value={persona.whatsapp ?? ""} onChange={(value) => onPersona(persona.id, { whatsapp: value })} />
+              <ConfigInput label="WhatsApp secundario" value={persona.whatsappSecundario ?? ""} onChange={(value) => onPersona(persona.id, { whatsappSecundario: value })} />
               <label className="config-field">
                 <span>Estado</span>
                 <select
@@ -2567,6 +2592,7 @@ function PersonaEditModal({
     nombre: persona.nombre,
     rut: persona.rut,
     whatsapp: persona.whatsapp ?? "",
+    whatsappSecundario: persona.whatsappSecundario ?? "",
     estado: persona.estado,
     fechaBaja: persona.fechaBaja ?? "",
     motivoBaja: persona.motivoBaja ?? "",
@@ -2597,6 +2623,7 @@ function PersonaEditModal({
       nombre: form.nombre.trim(),
       rut: formatRut(form.rut),
       whatsapp: formatWhatsapp(form.whatsapp),
+      whatsappSecundario: formatWhatsapp(form.whatsappSecundario),
       estado: form.estado,
       fechaBaja: form.estado === "de_baja" ? form.fechaBaja : "",
       motivoBaja: form.estado === "de_baja" ? form.motivoBaja?.trim() : "",
@@ -2639,12 +2666,25 @@ function PersonaEditModal({
             />
           </ModalField>
 
-          <ModalField label="WhatsApp" error={touched ? errors.whatsapp : undefined} hint="Opcional. Ejemplo: +56 9 1234 5678">
+          <ModalField label="WhatsApp principal" error={touched ? errors.whatsapp : undefined} hint="Opcional. Ejemplo: +56 9 1234 5678">
             <input
               value={form.whatsapp ?? ""}
               onChange={(event) => updateForm("whatsapp", event.target.value)}
               onBlur={() => {
                 updateForm("whatsapp", formatWhatsapp(form.whatsapp));
+                setTouched(true);
+              }}
+              inputMode="tel"
+              placeholder="+56 9 1234 5678"
+            />
+          </ModalField>
+
+          <ModalField label="WhatsApp secundario" error={touched ? errors.whatsappSecundario : undefined} hint="Opcional. Maximo un numero secundario.">
+            <input
+              value={form.whatsappSecundario ?? ""}
+              onChange={(event) => updateForm("whatsappSecundario", event.target.value)}
+              onBlur={() => {
+                updateForm("whatsappSecundario", formatWhatsapp(form.whatsappSecundario));
                 setTouched(true);
               }}
               inputMode="tel"

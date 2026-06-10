@@ -33,6 +33,7 @@ export interface Emprendedor {
   nombre: string;
   rut: string;
   whatsapp?: string;
+  whatsappSecundario?: string;
   estado: EstadoPersona;
   fechaBaja?: string;
   motivoBaja?: string;

@@ -57,7 +57,8 @@ const fieldLabels: Record<string, string> = {
   estadoCarga: "estado de carga",
   nombre: "nombre",
   rut: "RUT",
-  whatsapp: "WhatsApp",
+  whatsapp: "WhatsApp principal",
+  whatsappSecundario: "WhatsApp secundario",
   estado: "estado",
   fechaBaja: "fecha de baja",
   motivoBaja: "motivo de baja",
@@ -228,6 +229,7 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
     emprendedores: state.emprendedores.map((emprendedor) => ({
       ...emprendedor,
       whatsapp: emprendedor.whatsapp ?? "",
+      whatsappSecundario: emprendedor.whatsappSecundario ?? "",
       estado: emprendedor.estado ?? "activa",
       fechaBaja: emprendedor.fechaBaja ?? "",
       motivoBaja: emprendedor.motivoBaja ?? "",
