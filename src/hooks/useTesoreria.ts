@@ -31,6 +31,24 @@ const STORAGE_KEY = "tesoreria-semilla-emprende-v1";
 
 export type CloudSyncStatus = "local" | "connecting" | "synced" | "saving" | "error";
 
+const SYNC_RETRY_DELAYS = [1200, 2500, 5000, 9000, 15000];
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+const isTransientFirebaseMessage = (message: string) =>
+  [
+    "unavailable",
+    "deadline-exceeded",
+    "network",
+    "offline",
+    "timeout",
+    "timed out",
+    "no respondio",
+    "failed to get document because the client is offline",
+    "could not reach cloud firestore backend",
+  ].some((pattern) => message.toLowerCase().includes(pattern));
+
 const deriveEstadoPago = (montoPagado: number, totalEsperado: number, current: EstadoPago) => {
   if (current === "atrasado" || current === "revisar") return current;
   if (montoPagado <= 0) return "pendiente";
@@ -405,6 +423,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const applyingRemoteRef = useRef(false);
   const remoteReadyRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
+  const retryTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -467,7 +486,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       .catch((error) => {
         if (cancelled) return;
         setCloudStatus("error");
-        setCloudError(error instanceof Error ? error.message : "No se pudo conectar con Firebase.");
+        setCloudError(getErrorMessage(error, "No se pudo conectar con Firebase."));
       });
 
     const unsubscribe = subscribeRemoteState(
@@ -478,6 +497,12 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         setCloudStatus("synced");
       },
       (message) => {
+        if (isTransientFirebaseMessage(message)) {
+          setCloudStatus("connecting");
+          setCloudError("Firebase esta reconectando. Los cambios se conservan localmente y se sincronizaran al recuperar la conexion.");
+          return;
+        }
+
         setCloudStatus("error");
         setCloudError(message);
       },
@@ -485,6 +510,10 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
 
     return () => {
       cancelled = true;
+      if (retryTimeoutRef.current) {
+        window.clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
       unsubscribe();
     };
   }, [options.publicReadEnabled, options.syncEnabled, options.updatedBy]);
@@ -500,23 +529,52 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     if (saveTimeoutRef.current) {
       window.clearTimeout(saveTimeoutRef.current);
     }
+    if (retryTimeoutRef.current) {
+      window.clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
 
     setCloudStatus("saving");
-    saveTimeoutRef.current = window.setTimeout(() => {
+    const persistState = (attempt = 0) => {
       saveRemoteState(state, options.updatedBy)
         .then(() => {
+          if (retryTimeoutRef.current) {
+            window.clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+          }
           setCloudStatus("synced");
           setCloudError("");
         })
         .catch((error) => {
-          setCloudStatus("error");
-          setCloudError(error instanceof Error ? error.message : "No se pudo guardar en Firebase.");
+          const message = getErrorMessage(error, "No se pudo guardar en Firebase.");
+          const canRetry = isTransientFirebaseMessage(message) && attempt < SYNC_RETRY_DELAYS.length;
+
+          if (!canRetry) {
+            setCloudStatus("error");
+            setCloudError(message);
+            return;
+          }
+
+          setCloudStatus("connecting");
+          setCloudError("Firebase esta reconectando. Mantuvimos los cambios en este equipo y volveremos a intentar sincronizar.");
+          retryTimeoutRef.current = window.setTimeout(() => {
+            setCloudStatus("saving");
+            persistState(attempt + 1);
+          }, SYNC_RETRY_DELAYS[attempt]);
         });
+    };
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      persistState();
     }, 450);
 
     return () => {
       if (saveTimeoutRef.current) {
         window.clearTimeout(saveTimeoutRef.current);
+      }
+      if (retryTimeoutRef.current) {
+        window.clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
       }
     };
   }, [options.syncEnabled, options.updatedBy, state]);
