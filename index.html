@@ -9,27 +9,6 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      if (location.hostname === "sergiozata.github.io") {
-        setTimeout(function () {
-          if (document.querySelector('script[src*="assets/app.js"]')) {
-            return;
-          }
-
-          var assetVersion = "2026-06-09-auth-cache-v14";
-
-          var stylesheet = document.createElement("link");
-          stylesheet.rel = "stylesheet";
-          stylesheet.href = "./assets/index.css?v=" + assetVersion;
-          document.head.appendChild(stylesheet);
-
-          var app = document.createElement("script");
-          app.type = "module";
-          app.src = "./assets/app.js?v=" + assetVersion;
-          document.body.appendChild(app);
-        }, 0);
-      }
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
