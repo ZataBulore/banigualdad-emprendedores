@@ -769,6 +769,7 @@ const validatePersonaForm = (
 
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
+  const [authReady, setAuthReady] = useState(!isFirebaseConfigured);
   const [authError, setAuthError] = useState("");
   const [dialogRequest, setDialogRequest] = useState<AppDialogRequest | null>(null);
   const [publicRoute, setPublicRoute] = useState<PublicRoute>(() => getPublicRoute());
@@ -899,12 +900,16 @@ function App() {
   );
 
   useEffect(() => {
-    if (!isFirebaseConfigured) return;
+    if (!isFirebaseConfigured) {
+      setAuthReady(true);
+      return;
+    }
 
     return subscribeFirebaseAuthState((firebaseUser) => {
       if (!firebaseUser?.email) {
         clearStoredAuthSession();
         setAuthUser(null);
+        setAuthReady(true);
         return;
       }
 
@@ -922,6 +927,7 @@ function App() {
         void signOutFirebase();
         setAuthUser(null);
         setAuthError(`La cuenta ${user.email} no esta autorizada para ver este sistema.`);
+        setAuthReady(true);
         return;
       }
 
@@ -929,6 +935,7 @@ function App() {
       window.sessionStorage.removeItem(AUTH_SESSION_KEY);
       setAuthUser(user);
       setAuthError("");
+      setAuthReady(true);
     });
   }, [correosAutorizados]);
 
@@ -1508,6 +1515,10 @@ function App() {
         />
       </main>
     );
+  }
+
+  if (!authReady) {
+    return <AuthCheckingGate onPublicHome={goPublicHome} />;
   }
 
   if (!authUser) {
@@ -2884,6 +2895,39 @@ function ComprobanteAdjuntoInput({
         </div>
       )}
     </div>
+  );
+}
+
+function AuthCheckingGate({ onPublicHome }: { onPublicHome: () => void }) {
+  return (
+    <main className="login-shell">
+      <section className="login-card auth-check-card">
+        <div className="login-brand">
+          <div className="login-icon">
+            <Sprout size={31} strokeWidth={2.1} />
+          </div>
+          <div>
+            <span>Negrete</span>
+            <strong>Semilla Emprende</strong>
+          </div>
+        </div>
+        <button className="secondary-button login-back-button" onClick={onPublicHome}>
+          Volver a vitrina publica
+        </button>
+        <p className="eyebrow">Acceso privado</p>
+        <h1>Verificando sesión</h1>
+        <p className="login-copy">
+          Estamos revisando tu cuenta autorizada antes de abrir la administración.
+        </p>
+        <div className="auth-check-status" role="status" aria-live="polite">
+          <span className="inline-spinner" aria-hidden="true" />
+          <strong>Conectando con Firebase</strong>
+        </div>
+      </section>
+      <footer className="login-footer">
+        Version {APP_VERSION} - Zata Studio Lab
+      </footer>
+    </main>
   );
 }
 
