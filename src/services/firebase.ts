@@ -52,6 +52,9 @@ const getStateRef = () => {
   return doc(firestore, FIREBASE_STATE_PATH.collection, FIREBASE_STATE_PATH.document);
 };
 
+const sanitizeForFirestore = <T>(value: T): T =>
+  JSON.parse(JSON.stringify(value)) as T;
+
 export const signInFirebaseWithGoogleCredential = async (credential: string) => {
   if (!firebaseAuth) return null;
   return signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(credential));
@@ -75,7 +78,7 @@ export const saveRemoteState = async (state: TesoreriaState, updatedBy?: string)
   await setDoc(
     stateRef,
     {
-      state,
+      state: sanitizeForFirestore(state),
       updatedAt: serverTimestamp(),
       updatedBy: updatedBy ?? "",
     },
@@ -141,7 +144,7 @@ export const createSolicitudEmprendimiento = async (
   if (!solicitudes) throw new Error("Firebase no esta configurado para recibir formularios.");
   const timestamp = new Date().toISOString();
   const docRef = await addDoc(solicitudes, {
-    ...payload,
+    ...sanitizeForFirestore(payload),
     estado: "nueva",
     origen: "formulario-publico",
     createdAt: timestamp,
@@ -185,7 +188,7 @@ export const updateSolicitudEmprendimiento = async (
   await setDoc(
     doc(firestore, FIREBASE_SOLICITUDES_COLLECTION, id),
     {
-      ...patch,
+      ...sanitizeForFirestore(patch),
       updatedAt: new Date().toISOString(),
       serverUpdatedAt: serverTimestamp(),
     },
