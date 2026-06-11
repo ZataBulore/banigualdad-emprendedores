@@ -318,6 +318,36 @@ const loadState = (): TesoreriaState => {
   }
 };
 
+const crearEstadoOperativoInicial = (current: TesoreriaState): TesoreriaState => {
+  const emprendedores = current.emprendedores.length ? current.emprendedores : tesoreriaInicial.emprendedores;
+  const configuracion = current.configuracion ?? tesoreriaInicial.configuracion;
+
+  return {
+    ...current,
+    centro: current.centro ?? tesoreriaInicial.centro,
+    configuracion,
+    periodos: current.periodos.length ? current.periodos : tesoreriaInicial.periodos,
+    emprendedores,
+    cobros: current.cobros.map((cobro) => ({
+      ...cobro,
+      montoPagado: 0,
+      estadoPago: "pendiente",
+      atraso: 0,
+      fechaAtraso: "",
+      fechaPago: "",
+      metodoPago: "",
+      referenciaPago: "",
+      comprobanteAdjunto: null,
+      observacion: "",
+      confirmadoPorTesorero: false,
+    })),
+    pagosCes: crearPagosCes(emprendedores, configuracion),
+    emprendimientos: [],
+    reuniones: [],
+    updatedAt: new Date().toISOString(),
+  };
+};
+
 export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled?: boolean; updatedBy?: string } = {}) => {
   const [state, setState] = useState<TesoreriaState>(loadState);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(
@@ -989,13 +1019,12 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const resetear = () => {
     setState((current) =>
       withMovimiento({
-        ...tesoreriaInicial,
+        ...crearEstadoOperativoInicial(current),
         historial: current.historial ?? [],
-        updatedAt: new Date().toISOString(),
       }, {
         tipo: "respaldo",
-        accion: "Sistema reiniciado",
-        detalle: "Se restauraron los datos iniciales del sistema.",
+        accion: "Sistema reiniciado para uso inicial",
+        detalle: `Se conservaron ${current.emprendedores.length} usuarios, el centro, periodos y configuraciones. Se reiniciaron cobros, CES, emprendimientos y reuniones.`,
       }, options.updatedBy),
     );
   };

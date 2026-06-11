@@ -1170,7 +1170,7 @@ function App() {
   };
 
   const handleReset = async () => {
-    const confirmed = await confirmarAccionCritica("Restablecer valores por defecto borrara los cambios guardados en este navegador y volvera a la base inicial del sistema. Esta accion queda registrada en auditoria.", {
+    const confirmed = await confirmarAccionCritica("Restablecer para inicio conservara usuarios, centro, periodos y configuraciones. Se reiniciaran cobros, CES, emprendimientos y reuniones, y la accion quedara registrada en auditoria.", {
       title: "Semilla Emprende Negrete advierte",
       tone: "danger",
       confirmLabel: "Continuar",
