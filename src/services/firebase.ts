@@ -1,5 +1,5 @@
 import { FirebaseError, initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithCredential, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, getDocs, getFirestore, initializeFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import type { SolicitudEmprendimiento, TesoreriaState } from "../types/tesoreria";
 
@@ -55,9 +55,12 @@ const getStateRef = () => {
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
-export const signInFirebaseWithGoogleCredential = async (credential: string) => {
+const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
+
+export const signInFirebaseWithGoogle = async () => {
   if (!firebaseAuth) return null;
-  return signInWithCredential(firebaseAuth, GoogleAuthProvider.credential(credential));
+  return signInWithPopup(firebaseAuth, googleProvider);
 };
 
 export const signOutFirebase = async () => {

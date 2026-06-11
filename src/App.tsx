@@ -43,7 +43,7 @@ import {
   getFirebaseMissingConfig,
   isFirebaseConfigured,
   createSolicitudEmprendimiento,
-  signInFirebaseWithGoogleCredential,
+  signInFirebaseWithGoogle,
   signOutFirebase,
   subscribeSolicitudesEmprendimiento,
   updateSolicitudEmprendimiento,
@@ -61,23 +61,6 @@ type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">
 type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
-type GoogleCredentialResponse = { credential?: string };
-
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (options: { client_id: string; callback: (response: GoogleCredentialResponse) => void }) => void;
-          renderButton: (parent: HTMLElement, options: Record<string, string | number | boolean>) => void;
-        };
-      };
-    };
-  }
-}
-
-const DEFAULT_GOOGLE_CLIENT_ID = "765446934481-gdrr3jvuvp8cqe050itntbv2k01menuv.apps.googleusercontent.com";
-const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim() || DEFAULT_GOOGLE_CLIENT_ID;
 const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "")
   .split(/[,\n;]/)
   .map((email: string) => email.trim().toLowerCase())
@@ -469,23 +452,6 @@ const formatFileSize = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const decodeGoogleCredential = (credential: string): AuthUser => {
-  const [, payload] = credential.split(".");
-  const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-  const json = decodeURIComponent(
-    Array.from(atob(normalized))
-      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
-      .join(""),
-  );
-  const data = JSON.parse(json) as { email?: string; name?: string; picture?: string };
-
-  return {
-    email: (data.email ?? "").toLowerCase(),
-    nombre: data.name ?? data.email ?? "Cuenta Google",
-    foto: data.picture,
-  };
-};
-
 const loadAuthSession = () => {
   try {
     const stored = window.localStorage.getItem(AUTH_SESSION_KEY) ?? window.sessionStorage.getItem(AUTH_SESSION_KEY);
@@ -835,28 +801,39 @@ function App() {
     [state.configuracion.seguridad.correosAutorizados],
   );
 
-  const handleGoogleLogin = async (user: AuthUser, credential: string) => {
+  const handleGoogleLogin = async () => {
+    setAuthError("");
+    let credential: Awaited<ReturnType<typeof signInFirebaseWithGoogle>>;
+    try {
+      credential = await signInFirebaseWithGoogle();
+    } catch (error) {
+      console.error("Firebase Auth no pudo iniciar sesion con Google.", error);
+      const detail = getFirebaseAuthErrorDetail(error);
+      setAuthError(`No se pudo activar Firebase Auth. Revisa que Google este habilitado en Firebase Authentication y que el dominio este autorizado.${detail ? ` Detalle: ${detail}` : ""}`);
+      return;
+    }
+
+    const firebaseUser = credential?.user;
+    if (!firebaseUser?.email) {
+      setAuthError("Google no entrego un correo valido para activar la sesion.");
+      return;
+    }
+
+    const user: AuthUser = {
+      email: firebaseUser.email.toLowerCase(),
+      nombre: firebaseUser.displayName ?? firebaseUser.email,
+      foto: firebaseUser.photoURL ?? undefined,
+    };
     const email = user.email.toLowerCase();
     const isAllowed = !correosAutorizados.length || correosAutorizados.includes(email);
 
     if (!isAllowed) {
       window.sessionStorage.removeItem(AUTH_SESSION_KEY);
       window.localStorage.removeItem(AUTH_SESSION_KEY);
+      void signOutFirebase();
       setAuthUser(null);
       setAuthError(`La cuenta ${email} no esta autorizada para ver este sistema.`);
       return;
-    }
-
-    if (isFirebaseConfigured) {
-      try {
-        await signInFirebaseWithGoogleCredential(credential);
-      } catch (error) {
-        console.error("Firebase Auth no pudo enlazar la sesion de Google.", error);
-        setAuthUser(null);
-        const detail = getFirebaseAuthErrorDetail(error);
-        setAuthError(`No se pudo activar Firebase Auth. Revisa que Google este habilitado en Firebase Authentication y que el dominio este autorizado.${detail ? ` Detalle: ${detail}` : ""}`);
-        return;
-      }
     }
 
     const sessionUser: AuthUser = { ...user, authSource: "google", sessionVersion: AUTH_SESSION_VERSION };
@@ -1347,7 +1324,6 @@ function App() {
   if (!authUser) {
     return (
       <LoginGate
-        clientId={GOOGLE_CLIENT_ID}
         allowedEmails={correosAutorizados}
         error={authError}
         onLogin={handleGoogleLogin}
@@ -2364,67 +2340,27 @@ function GuidedOptions({
 }
 
 function LoginGate({
-  clientId,
   allowedEmails,
   error,
   onLogin,
   onPublicHome,
 }: {
-  clientId: string;
   allowedEmails: string[];
   error: string;
-  onLogin: (user: AuthUser, credential: string) => Promise<void> | void;
+  onLogin: () => Promise<void> | void;
   onPublicHome: () => void;
 }) {
-  const buttonRef = useRef<HTMLDivElement>(null);
-  const [scriptReady, setScriptReady] = useState(false);
-  const [internalError, setInternalError] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
-  useEffect(() => {
-    if (!clientId) return;
-    if (window.google?.accounts?.id) {
-      setScriptReady(true);
-      return;
+  const handleLogin = async () => {
+    if (isSigningIn) return;
+    setIsSigningIn(true);
+    try {
+      await onLogin();
+    } finally {
+      setIsSigningIn(false);
     }
-
-    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
-    const script = existing ?? document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setScriptReady(true);
-    script.onerror = () => setInternalError("No se pudo cargar Google Identity Services. Revisa la conexion.");
-    if (!existing) document.head.appendChild(script);
-  }, [clientId]);
-
-  useEffect(() => {
-    if (!clientId || !scriptReady || !buttonRef.current || !window.google?.accounts?.id) return;
-
-    buttonRef.current.innerHTML = "";
-    window.google.accounts.id.initialize({
-      client_id: clientId,
-      callback: (response) => {
-        if (!response.credential) {
-          setInternalError("Google no entrego una credencial valida. Intentalo nuevamente.");
-          return;
-        }
-
-        try {
-          void onLogin(decodeGoogleCredential(response.credential), response.credential);
-        } catch {
-          setInternalError("No se pudo leer la cuenta de Google. Intentalo nuevamente.");
-        }
-      },
-    });
-    window.google.accounts.id.renderButton(buttonRef.current, {
-      theme: "outline",
-      size: "large",
-      shape: "pill",
-      width: 280,
-      text: "signin_with",
-      locale: "es",
-    });
-  }, [clientId, onLogin, scriptReady]);
+  };
 
   return (
     <main className="login-shell">
@@ -2447,18 +2383,12 @@ function LoginGate({
           Gestiona cobros, asistencia y acuerdos del centro con una cuenta Google autorizada.
         </p>
 
-        {!clientId ? (
-          <div className="login-warning">
-            <strong>Falta configurar Google Login</strong>
-            <span>Agrega el secreto/variable `VITE_GOOGLE_CLIENT_ID` en GitHub Pages o en el build local.</span>
-          </div>
-        ) : (
-          <div className="google-login-button" ref={buttonRef}>
-            {!scriptReady && <span>Cargando Google...</span>}
-          </div>
-        )}
+        <button className="google-login-button" type="button" onClick={handleLogin} disabled={isSigningIn}>
+          {isSigningIn ? <span className="inline-spinner" aria-hidden="true" /> : <span className="google-mark">G</span>}
+          {isSigningIn ? "Conectando con Google" : "Acceder con Google"}
+        </button>
 
-        {(error || internalError) && <div className="login-error">{error || internalError}</div>}
+        {error && <div className="login-error">{error}</div>}
 
         <div className="login-allowlist">
           <ShieldCheck size={18} />
