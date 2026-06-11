@@ -1093,14 +1093,10 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
 
   const resetear = () => {
     setState((current) =>
-      withMovimiento({
+      ({
         ...crearEstadoOperativoInicial(current),
-        historial: current.historial ?? [],
-      }, {
-        tipo: "respaldo",
-        accion: "Sistema reiniciado para uso inicial",
-        detalle: `Se conservaron ${current.emprendedores.length} usuarios, el centro, periodos y configuraciones. Se reiniciaron cobros, CES, emprendimientos y reuniones.`,
-      }, options.updatedBy),
+        historial: [],
+      }),
     );
   };
 

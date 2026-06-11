@@ -1351,6 +1351,82 @@ label.secondary-button:hover,
   gap: 8px;
 }
 
+.group-collection-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  border: 1px solid color-mix(in srgb, var(--section-accent) 22%, transparent);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.group-collection-panel.soon,
+.group-collection-panel.urgent {
+  border-color: rgba(255, 149, 0, 0.34);
+  background: #fffaf0;
+}
+
+.group-collection-panel.late {
+  border-color: rgba(255, 59, 48, 0.28);
+  background: #fff6f4;
+}
+
+.group-collection-copy h2 {
+  margin: 2px 0 4px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.group-collection-copy span,
+.group-collection-deadline {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.group-collection-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--section-soft);
+  color: var(--section-accent);
+  padding: 7px 10px;
+}
+
+.group-collection-panel.urgent .group-collection-deadline,
+.group-collection-panel.soon .group-collection-deadline {
+  background: #fff0d1;
+  color: #8a5200;
+}
+
+.group-collection-panel.late .group-collection-deadline {
+  background: #ffecea;
+  color: var(--danger);
+}
+
+.group-message-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.group-message-actions .secondary-button {
+  min-width: 0;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.group-message-actions .secondary-button.disabled,
+.group-message-actions .secondary-button:disabled {
+  opacity: 0.48;
+  pointer-events: none;
+}
+
 .multi-pay-button {
   width: 100%;
 }
@@ -4682,6 +4758,16 @@ label.secondary-button:hover,
   .rut-validation-panel .secondary-button {
     margin-top: 17px;
     white-space: nowrap;
+  }
+
+  .group-collection-panel {
+    grid-template-columns: minmax(220px, 1fr) auto;
+    align-items: center;
+  }
+
+  .group-message-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .modal-field:last-child {

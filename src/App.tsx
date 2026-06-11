@@ -5,6 +5,7 @@ import {
   Check,
   CheckCircle2,
   CircleDollarSign,
+  Clipboard,
   Cloud,
   CloudOff,
   Download,
@@ -600,6 +601,9 @@ const buildWhatsappUrl = (telefono: string, message: string) => {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 };
 
+const buildWhatsappShareUrl = (message: string) =>
+  `https://wa.me/?text=${encodeURIComponent(message)}`;
+
 const getSecondaryContactName = (persona: Emprendedor) => (persona.nombreContactoSecundario ?? "").trim();
 
 const buildSecondaryAttendanceNote = (persona: Emprendedor) => {
@@ -627,6 +631,74 @@ const buildWhatsappMessages = (
     proximo: `Hola ${nombre}, te recuerdo que tu pago de Banigualdad por ${monto} vence el ${vencimiento}. Si ya pagaste, por favor avisame para registrarlo. Gracias.`,
     atrasado: `Hola ${nombre}, aparece pendiente tu pago de Banigualdad por ${monto}, con vencimiento ${vencimiento}. Por favor regularicemos este pago lo antes posible. Gracias.`,
     ultimoDia: `Hola ${nombre}, hoy es el ultimo dia para registrar tu pago de Banigualdad por ${monto}. Si puedes, enviame confirmacion cuando realices el pago. Gracias.`,
+  };
+};
+
+const getLocalDeadline = (date: string) => {
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 16, 0, 0, 0);
+};
+
+const getPaymentDeadlineContext = (periodo?: Periodo) => {
+  const fechaVencimiento = periodo?.fechaVencimiento;
+  const deadline = fechaVencimiento ? getLocalDeadline(fechaVencimiento) : null;
+  if (!deadline || !fechaVencimiento) {
+    return {
+      label: "sin fecha de vencimiento configurada",
+      tone: "neutral" as const,
+      daysText: "la fecha de pago aun no esta configurada",
+    };
+  }
+
+  const now = new Date();
+  const diffMs = deadline.getTime() - now.getTime();
+  const absDays = Math.ceil(Math.abs(diffMs) / (1000 * 60 * 60 * 24));
+  const timeLabel = `${formatDate(fechaVencimiento)} a las 16:00 hrs`;
+
+  if (diffMs < 0) {
+    return {
+      label: `vencio el ${timeLabel}`,
+      tone: "late" as const,
+      daysText: absDays <= 1 ? "el plazo ya vencio hace menos de 1 dia" : `el plazo vencio hace ${absDays} dias`,
+    };
+  }
+
+  if (diffMs <= 1000 * 60 * 60 * 24) {
+    return {
+      label: `vence hoy, ${timeLabel}`,
+      tone: "urgent" as const,
+      daysText: "queda menos de 1 dia para el vencimiento",
+    };
+  }
+
+  return {
+    label: `vence el ${timeLabel}`,
+    tone: diffMs <= 1000 * 60 * 60 * 48 ? "soon" as const : "normal" as const,
+    daysText: `faltan ${absDays} dias para el vencimiento`,
+  };
+};
+
+const buildGroupPaymentMessages = ({
+  periodo,
+  pendingCount,
+  pendingAmount,
+}: {
+  periodo?: Periodo;
+  pendingCount: number;
+  pendingAmount: number;
+}) => {
+  const deadline = getPaymentDeadlineContext(periodo);
+  const cuotaLabel = periodo ? `cuota ${periodo.numeroCuota}` : "cuota vigente";
+  const personasText = `${pendingCount} persona${pendingCount === 1 ? "" : "s"}`;
+  const amountText = pendingAmount > 0 ? `, por un saldo total de ${formatCurrency(pendingAmount)}` : "";
+  const cierre = "Recordemos que este grupo es de apoyo solidario, respetuoso y responsable; avisar a tiempo ayuda a no entorpecer la gestion del centro.";
+
+  return {
+    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. ${cierre}`,
+    cercano: `Hola grupo, aviso amable de organizacion: la ${cuotaLabel} esta cerca de cerrar y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El pago debe quedar listo hasta el sabado a las 16:00 hrs para mantener ordenada la gestion. ${deadline.daysText}. ${cierre}`,
+    urgente: `Hola grupo, recordatorio importante: hoy/cerca del cierre de la ${cuotaLabel} aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}. Les pedimos regularizar o avisar con respeto durante el dia para no atrasar la gestion. ${cierre}`,
+    atraso: `Hola grupo, necesitamos ponernos al dia con la ${cuotaLabel}: aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText} y ${deadline.daysText}. Por favor revisemos y coordinemos de forma solidaria para regularizar lo antes posible. ${cierre}`,
   };
 };
 
@@ -935,6 +1007,27 @@ function App() {
   const personaCobroEditando = cobroEditando ? personasPorId.get(cobroEditando.emprendedorId) : undefined;
   const cobrosPeriodo = state.cobros.filter((cobro) => cobro.periodoId === periodo?.id);
   const totals = getPeriodoTotals(cobrosPeriodo);
+  const cobrosPendientesGrupo = useMemo(
+    () => cobrosPeriodo.filter((cobro) => Math.max(cobro.totalEsperado - cobro.montoPagado, 0) > 0),
+    [cobrosPeriodo],
+  );
+  const personasPendientesGrupo = useMemo(
+    () => new Set(cobrosPendientesGrupo.map((cobro) => cobro.emprendedorId)).size,
+    [cobrosPendientesGrupo],
+  );
+  const saldoPendienteGrupo = useMemo(
+    () => cobrosPendientesGrupo.reduce((total, cobro) => total + Math.max(cobro.totalEsperado - cobro.montoPagado, 0), 0),
+    [cobrosPendientesGrupo],
+  );
+  const mensajesCobroGrupo = useMemo(
+    () => buildGroupPaymentMessages({
+      periodo,
+      pendingCount: personasPendientesGrupo,
+      pendingAmount: saldoPendienteGrupo,
+    }),
+    [periodo, personasPendientesGrupo, saldoPendienteGrupo],
+  );
+  const contextoVencimientoGrupo = useMemo(() => getPaymentDeadlineContext(periodo), [periodo]);
   const cesTotals = getPeriodoTotals(state.pagosCes);
 
   const cobrosFiltrados = useMemo(() => {
@@ -1215,7 +1308,7 @@ function App() {
   };
 
   const handleReset = async () => {
-    const confirmed = await confirmarAccionCritica("Restablecer para inicio conservara usuarios, centro, periodos y configuraciones. Se reiniciaran cobros, CES, emprendimientos y reuniones, y la accion quedara registrada en auditoria.", {
+    const confirmed = await confirmarAccionCritica("Restablecer para inicio conservara usuarios, centro, periodos y configuraciones. Se reiniciaran cobros, CES, emprendimientos, reuniones e historial para comenzar una carga limpia.", {
       title: "Semilla Emprende Negrete advierte",
       tone: "danger",
       confirmLabel: "Continuar",
@@ -1245,6 +1338,31 @@ function App() {
     });
     if (!confirmed) return;
     recalcularPagosCes();
+  };
+
+  const registrarMensajeCobroGrupo = (label: string, message: string) => {
+    registrarMovimiento({
+      tipo: "notificacion",
+      accion: `WhatsApp grupo cobros: ${label}`,
+      detalle: `Se preparo mensaje grupal para la cuota ${periodo?.numeroCuota ?? "vigente"} con ${personasPendientesGrupo} pendiente${personasPendientesGrupo === 1 ? "" : "s"}. Mensaje: ${message}`,
+      entidadId: periodo?.id,
+    });
+  };
+
+  const copiarMensajeCobroGrupo = async (label: string, message: string) => {
+    try {
+      await navigator.clipboard.writeText(message);
+      registrarMensajeCobroGrupo(`copiado - ${label}`, message);
+      await informarSistema("Mensaje grupal copiado. Puedes pegarlo en el grupo de WhatsApp.", {
+        tone: "success",
+      });
+    } catch {
+      await informarSistema(message, {
+        title: `Mensaje grupal: ${label}`,
+        tone: "info",
+        confirmLabel: "Listo",
+      });
+    }
   };
 
   const goPublicHome = () => {
@@ -1512,6 +1630,56 @@ function App() {
               </button>
             ))}
           </div>
+
+          <section className={`group-collection-panel ${contextoVencimientoGrupo.tone}`}>
+            <div className="group-collection-copy">
+              <p className="eyebrow">WhatsApp grupo</p>
+              <h2>Mensajes grupales de cobro</h2>
+              <span>
+                {personasPendientesGrupo
+                  ? `${personasPendientesGrupo} persona${personasPendientesGrupo === 1 ? "" : "s"} pendiente${personasPendientesGrupo === 1 ? "" : "s"} · ${formatCurrency(saldoPendienteGrupo)} · ${contextoVencimientoGrupo.daysText}`
+                  : "No hay personas pendientes en esta cuota."}
+              </span>
+            </div>
+            <div className="group-collection-deadline">
+              <CalendarDays size={17} />
+              <span>{contextoVencimientoGrupo.label}</span>
+            </div>
+            <div className="group-message-actions" aria-label="Crear mensaje grupal de cobro">
+              {[
+                { key: "amable", label: "Amable", icon: <MessageCircle size={17} />, message: mensajesCobroGrupo.amable },
+                { key: "cercano", label: "Fecha cerca", icon: <CalendarDays size={17} />, message: mensajesCobroGrupo.cercano },
+                { key: "urgente", label: "Ultimo aviso", icon: <Send size={17} />, message: mensajesCobroGrupo.urgente },
+                { key: "atraso", label: "Regularizar", icon: <AlertTriangle size={17} />, message: mensajesCobroGrupo.atraso },
+              ].map((action) => (
+                <a
+                  key={action.key}
+                  className={personasPendientesGrupo ? "secondary-button" : "secondary-button disabled"}
+                  href={personasPendientesGrupo ? buildWhatsappShareUrl(action.message) : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled={!personasPendientesGrupo}
+                  onClick={(event) => {
+                    if (!personasPendientesGrupo) {
+                      event.preventDefault();
+                      return;
+                    }
+                    registrarMensajeCobroGrupo(action.label, action.message);
+                  }}
+                >
+                  {action.icon} {action.label}
+                </a>
+              ))}
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!personasPendientesGrupo}
+                onClick={() => void copiarMensajeCobroGrupo("Amable", mensajesCobroGrupo.amable)}
+              >
+                <Clipboard size={17} /> Copiar texto
+              </button>
+            </div>
+          </section>
 
           <div className="toolbar">
             <SearchInput
