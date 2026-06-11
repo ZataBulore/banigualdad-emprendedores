@@ -502,6 +502,12 @@ const loadAuthSession = () => {
   }
 };
 
+const getFirebaseAuthErrorDetail = (error: unknown) => {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  const message = error instanceof Error ? error.message : "";
+  return [code, message].filter(Boolean).join(": ");
+};
+
 const getPublicRoute = (): PublicRoute => {
   const hash = window.location.hash.replace(/^#\/?/, "");
   if (hash === "admin" || hash === "login" || hash === "sistema") return "admin";
@@ -847,7 +853,8 @@ function App() {
       } catch (error) {
         console.error("Firebase Auth no pudo enlazar la sesion de Google.", error);
         setAuthUser(null);
-        setAuthError("No se pudo activar Firebase Auth. Revisa que Google este habilitado en Firebase Authentication y que el dominio este autorizado.");
+        const detail = getFirebaseAuthErrorDetail(error);
+        setAuthError(`No se pudo activar Firebase Auth. Revisa que Google este habilitado en Firebase Authentication y que el dominio este autorizado.${detail ? ` Detalle: ${detail}` : ""}`);
         return;
       }
     }
