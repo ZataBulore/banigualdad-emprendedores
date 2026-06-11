@@ -39,7 +39,13 @@ export const FIREBASE_STATE_PATH = {
   document: import.meta.env.VITE_FIREBASE_DOCUMENT_ID || "semilla-emprende-negrete",
 };
 
-export const FIREBASE_DATABASE_ID = getEnvValue("VITE_FIREBASE_DATABASE_ID") || "default";
+const normalizeFirestoreDatabaseId = (databaseId: string) => {
+  const normalized = databaseId.trim();
+  if (!normalized || normalized === "(default)") return "";
+  return normalized;
+};
+
+export const FIREBASE_DATABASE_ID = normalizeFirestoreDatabaseId(getEnvValue("VITE_FIREBASE_DATABASE_ID"));
 
 export const FIREBASE_SOLICITUDES_COLLECTION =
   import.meta.env.VITE_FIREBASE_SOLICITUDES_COLLECTION || "solicitudesEmprendimientos";
@@ -55,6 +61,19 @@ const getStateRef = () => {
 
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
+
+const withFirebaseTimeout = async <T>(operation: Promise<T>, fallbackMessage: string, timeoutMs = 12000) => {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(fallbackMessage)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+};
 
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
@@ -80,21 +99,27 @@ export const signOutFirebase = async () => {
 export const readRemoteState = async () => {
   const stateRef = getStateRef();
   if (!stateRef) return null;
-  const snapshot = await getDoc(stateRef);
+  const snapshot = await withFirebaseTimeout(
+    getDoc(stateRef),
+    "Firebase no respondio al leer la informacion. Revisa que Firestore Database este creado.",
+  );
   return snapshot.exists() ? (snapshot.data().state as TesoreriaState | undefined) ?? null : null;
 };
 
 export const saveRemoteState = async (state: TesoreriaState, updatedBy?: string) => {
   const stateRef = getStateRef();
   if (!stateRef) return;
-  await setDoc(
-    stateRef,
-    {
-      state: sanitizeForFirestore(state),
-      updatedAt: serverTimestamp(),
-      updatedBy: updatedBy ?? "",
-    },
-    { merge: true },
+  await withFirebaseTimeout(
+    setDoc(
+      stateRef,
+      {
+        state: sanitizeForFirestore(state),
+        updatedAt: serverTimestamp(),
+        updatedBy: updatedBy ?? "",
+      },
+      { merge: true },
+    ),
+    "Firebase no respondio al guardar. Revisa que Firestore Database este creado y que las reglas permitan escritura.",
   );
 };
 
@@ -155,21 +180,27 @@ export const createSolicitudEmprendimiento = async (
   const solicitudes = getSolicitudesCollection();
   if (!solicitudes) throw new Error("Firebase no esta configurado para recibir formularios.");
   const timestamp = new Date().toISOString();
-  const docRef = await addDoc(solicitudes, {
-    ...sanitizeForFirestore(payload),
-    estado: "nueva",
-    origen: "formulario-publico",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    serverCreatedAt: serverTimestamp(),
-  });
+  const docRef = await withFirebaseTimeout(
+    addDoc(solicitudes, {
+      ...sanitizeForFirestore(payload),
+      estado: "nueva",
+      origen: "formulario-publico",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      serverCreatedAt: serverTimestamp(),
+    }),
+    "Firebase no respondio al enviar el formulario. Revisa que Firestore Database este creado y que las reglas permitan crear solicitudes.",
+  );
   return docRef.id;
 };
 
 export const readSolicitudesEmprendimiento = async () => {
   const solicitudes = getSolicitudesCollection();
   if (!solicitudes) return [];
-  const snapshot = await getDocs(query(solicitudes, orderBy("createdAt", "desc")));
+  const snapshot = await withFirebaseTimeout(
+    getDocs(query(solicitudes, orderBy("createdAt", "desc"))),
+    "Firebase no respondio al leer las solicitudes.",
+  );
   return snapshot.docs.map((item) => mapSolicitud(item.id, item.data()));
 };
 
@@ -197,13 +228,16 @@ export const updateSolicitudEmprendimiento = async (
   patch: Partial<Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "origen">>,
 ) => {
   if (!firestore) throw new Error("Firebase no esta configurado.");
-  await setDoc(
-    doc(firestore, FIREBASE_SOLICITUDES_COLLECTION, id),
-    {
-      ...sanitizeForFirestore(patch),
-      updatedAt: new Date().toISOString(),
-      serverUpdatedAt: serverTimestamp(),
-    },
-    { merge: true },
+  await withFirebaseTimeout(
+    setDoc(
+      doc(firestore, FIREBASE_SOLICITUDES_COLLECTION, id),
+      {
+        ...sanitizeForFirestore(patch),
+        updatedAt: new Date().toISOString(),
+        serverUpdatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    ),
+    "Firebase no respondio al actualizar la solicitud.",
   );
 };

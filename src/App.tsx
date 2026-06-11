@@ -1218,6 +1218,16 @@ function App() {
     });
   };
 
+  const handleRecalcularCes = async () => {
+    const confirmed = await confirmarAccionCritica("Recalcular CES actualizara los montos esperados segun los creditos y reglas vigentes, manteniendo los pagos ya registrados. Esta accion quedara registrada en auditoria.", {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "warning",
+      confirmLabel: "Recalcular CES",
+    });
+    if (!confirmed) return;
+    recalcularPagosCes();
+  };
+
   const goPublicHome = () => {
     window.location.hash = "";
     setPublicRoute("home");
@@ -1457,7 +1467,7 @@ function App() {
           <Users size={18} /> Personas
         </button>
         <button className={tab === "emprendimientos" ? "active" : ""} onClick={() => goToTab("emprendimientos")}>
-          <Store size={18} /> Central
+          <Store size={18} /> Comercio
         </button>
         <button className={tab === "asistencias" ? "active" : ""} onClick={() => goToTab("asistencias")}>
           <CalendarCheck size={18} /> Reuniones
@@ -1755,7 +1765,7 @@ function App() {
           onPersona={updateEmprendedor}
           onCes={updateConfiguracionCes}
           onSeguridad={updateConfiguracionSeguridad}
-          onRecalcularCes={recalcularPagosCes}
+          onRecalcularCes={handleRecalcularCes}
           busqueda={busqueda}
           onBusqueda={setBusqueda}
           personasFiltradas={emprendedoresFiltrados}
@@ -1837,7 +1847,13 @@ function App() {
           personas={emprendedoresFiltrados.length ? emprendedoresFiltrados : state.emprendedores}
           defaultPersonaId={personaVisible?.id}
           onClose={() => setPagoMultipleAbierto(false)}
-          onSave={(ids, detail) => {
+          onSave={async (ids, detail) => {
+            const confirmed = await confirmarAccionCritica(`Guardar este pago para ${ids.length} cuota${ids.length === 1 ? "" : "s"} seleccionada${ids.length === 1 ? "" : "s"}? Se aplicara el mismo comprobante y detalle a cada cuota.`, {
+              title: "Semilla Emprende Negrete advierte",
+              tone: "warning",
+              confirmLabel: "Guardar pago",
+            });
+            if (!confirmed) return;
             registrarPagoMultiple(ids, detail);
             setPagoMultipleAbierto(false);
           }}
@@ -2183,25 +2199,28 @@ function PublicEmprendimientoForm({
     setTouched(true);
     if (hasErrors || submitting) return;
     setSubmitting(true);
-    await onSubmit({
-      ...form,
-      rut: formatRut(form.rut),
-      emprendedorId: personaValidada?.id ?? form.emprendedorId,
-      periodoValidadoId: periodo?.id ?? form.periodoValidadoId,
-      creditoOriginal: personaValidada?.creditoOriginal ?? form.creditoOriginal ?? 0,
-      nombreContacto: form.nombreContacto.trim(),
-      whatsapp: formatWhatsapp(form.whatsapp),
-      correo: form.correo.trim().toLowerCase(),
-      nombreEmprendimiento: form.nombreEmprendimiento.trim(),
-      rubro: form.rubro === "Otro" ? customRubro.trim() || "Otro" : form.rubro,
-      descripcion: form.descripcion.trim(),
-      direccion: form.direccion.trim(),
-      sector: form.sector.trim(),
-      comuna: form.comuna.trim(),
-      redesSociales: form.redesSociales.trim(),
-      notas: form.notas?.trim() ?? "",
-    });
-    setSubmitting(false);
+    try {
+      await onSubmit({
+        ...form,
+        rut: formatRut(form.rut),
+        emprendedorId: personaValidada?.id ?? form.emprendedorId,
+        periodoValidadoId: periodo?.id ?? form.periodoValidadoId,
+        creditoOriginal: personaValidada?.creditoOriginal ?? form.creditoOriginal ?? 0,
+        nombreContacto: form.nombreContacto.trim(),
+        whatsapp: formatWhatsapp(form.whatsapp),
+        correo: form.correo.trim().toLowerCase(),
+        nombreEmprendimiento: form.nombreEmprendimiento.trim(),
+        rubro: form.rubro === "Otro" ? customRubro.trim() || "Otro" : form.rubro,
+        descripcion: form.descripcion.trim(),
+        direccion: form.direccion.trim(),
+        sector: form.sector.trim(),
+        comuna: form.comuna.trim(),
+        redesSociales: form.redesSociales.trim(),
+        notas: form.notas?.trim() ?? "",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -5251,7 +5270,7 @@ function PagoMultipleModal({
   onSave: (
     ids: string[],
     detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
-  ) => void;
+  ) => void | Promise<void>;
 }) {
   const firstPersonaId = defaultPersonaId && personas.some((persona) => persona.id === defaultPersonaId)
     ? defaultPersonaId
@@ -5300,11 +5319,11 @@ function PagoMultipleModal({
     setMetodoPago(value);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setTouched(true);
     if (hasErrors) return;
 
-    onSave(selectedIds, {
+    await onSave(selectedIds, {
       fechaPago,
       metodoPago,
       referenciaPago: metodoPago === "transferencia" ? "" : referenciaPago,

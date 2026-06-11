@@ -2,14 +2,16 @@
 
 Esta app ya tiene implementado el guardado en Firestore. Por defecto siempre guarda una copia local en `localStorage`; cuando Firebase queda configurado, tambien lee y escribe automaticamente en la nube.
 
-## 1. Crear el proyecto en Firebase
+## 1. Crear la base Firestore
 
 1. Entra a [Firebase Console](https://console.firebase.google.com/).
-2. Crea un proyecto nuevo, por ejemplo `semilla-emprende-negrete`.
-3. En el proyecto, entra a **Build > Firestore Database**.
-4. Presiona **Create database**.
+2. Abre el proyecto `semilla-emprende-te`.
+3. Entra a **Build > Firestore Database**.
+4. Si aparece **Create database**, presionalo. Si ya ves una tabla de colecciones, este paso ya esta listo.
 5. Elige **Production mode**.
 6. Selecciona una ubicacion cercana o la que Firebase recomiende para tu proyecto.
+
+Importante: debe existir una base Firestore. En este proyecto el selector de base aparece como `default`. Si solo autorizaste el dominio en Authentication, todavia falta este paso para que el guardado en nube funcione.
 
 ## 2. Activar Google como proveedor de acceso
 
@@ -62,7 +64,7 @@ VITE_EMAIL_ADMIN_PASSWORD_HASH=hash-sha256-de-la-clave-admin
 Notas:
 
 - `.env.local` no se sube a Git porque esta ignorado en `.gitignore`.
-- `VITE_FIREBASE_DATABASE_ID` debe coincidir con el ID elegido al crear Firestore. En este proyecto es `default`.
+- `VITE_FIREBASE_DATABASE_ID` debe coincidir con el selector de base que aparece en Firestore. En este proyecto es `default`.
 - `VITE_FIREBASE_COLLECTION` y `VITE_FIREBASE_DOCUMENT_ID` definen donde se guardara todo el sistema: `centros/semilla-emprende-negrete`.
 - Si quieres usar otro documento para pruebas, cambia `VITE_FIREBASE_DOCUMENT_ID`, por ejemplo `semilla-emprende-negrete-test`.
 
@@ -124,6 +126,12 @@ Importante:
 - La lectura de `centros/semilla-emprende-negrete` queda publica para que funcione la vitrina sin login; la escritura queda solo para administradores.
 - La coleccion `solicitudesEmprendimientos` acepta creaciones desde el formulario publico, pero lectura, revision y eliminacion quedan solo para administradores.
 - No uses reglas abiertas como `allow read, write: if true` en produccion.
+
+Tambien puedes desplegar las reglas desde este proyecto cuando tengas Firebase CLI instalado e iniciada la sesion:
+
+```bash
+npm run deploy:rules
+```
 
 ## 7. Probar localmente
 
