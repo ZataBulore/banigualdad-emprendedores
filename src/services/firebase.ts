@@ -13,7 +13,7 @@ const firebaseEnvKeys = [
 ] as const;
 
 const firebaseDefaults = {
-  VITE_FIREBASE_API_KEY: "AIzaSyAOaKgndsGsd9Tt_JT_0t-SCUe9FCkLmAs",
+  VITE_FIREBASE_API_KEY: "AIzaSyA0aKgndsGsd9Tt_JT_0t-SCUe9FCkLmAs",
   VITE_FIREBASE_AUTH_DOMAIN: "semilla-emprende-te.firebaseapp.com",
   VITE_FIREBASE_PROJECT_ID: "semilla-emprende-te",
   VITE_FIREBASE_APP_ID: "1:765446934481:web:471f71de2e302cb5041af0",
