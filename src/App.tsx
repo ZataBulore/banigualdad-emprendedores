@@ -2064,6 +2064,13 @@ function PublicEmprendimientoForm({
   }, [form.rut, personaValidada, personasDelPeriodo, rutConsultado]);
 
   const contactoValido = Boolean(form.whatsapp.trim() || form.correo.trim());
+  const fichaValidadaSinWhatsapp = Boolean(
+    rutConsultado &&
+      personaValidada &&
+      !form.whatsapp.trim() &&
+      !personaValidada.whatsapp &&
+      !personaValidada.whatsappSecundario,
+  );
   const errors = {
     rut: personaValidada ? "" : "Ingresa un RUT que este registrado en el periodo de pagos vigente.",
     nombreContacto: form.nombreContacto.trim() ? "" : "Indica tu nombre.",
@@ -2203,6 +2210,11 @@ function PublicEmprendimientoForm({
               <span>{formatRut(personaValidada.rut)} · credito {formatCurrency(personaValidada.creditoOriginal)}</span>
             </div>
           </div>
+        )}
+        {fichaValidadaSinWhatsapp && (
+          <p className="receipt-help warning">
+            El RUT fue validado, pero la ficha cargada no trae WhatsApp. Si el numero existe en el sistema, revisa que la nube este sincronizada; por ahora puedes ingresarlo manualmente.
+          </p>
         )}
         {rutConsultado && !personaValidada && (
           <p className="receipt-help warning">No encontramos este RUT en las personas activas del periodo vigente. Revisa el numero o contacta al equipo antes de enviar el emprendimiento.</p>
