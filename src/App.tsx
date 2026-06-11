@@ -76,7 +76,7 @@ declare global {
   }
 }
 
-const DEFAULT_GOOGLE_CLIENT_ID = "229981580153-uat1blhskmtti5sc6sadbqsubl274p1p.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_CLIENT_ID = "765446934481-gdrr3jvuvp8cqe050itntbv2k01menuv.apps.googleusercontent.com";
 const GOOGLE_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "").trim() || DEFAULT_GOOGLE_CLIENT_ID;
 const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "")
   .split(/[,\n;]/)

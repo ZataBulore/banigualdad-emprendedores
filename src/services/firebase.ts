@@ -12,15 +12,24 @@ const firebaseEnvKeys = [
   "VITE_FIREBASE_APP_ID",
 ] as const;
 
+const firebaseDefaults = {
+  VITE_FIREBASE_API_KEY: "AIzaSyAOaKgndsGsd9Tt_JT_0t-SCUe9FCkLmAs",
+  VITE_FIREBASE_AUTH_DOMAIN: "semilla-emprende-te.firebaseapp.com",
+  VITE_FIREBASE_PROJECT_ID: "semilla-emprende-te",
+  VITE_FIREBASE_APP_ID: "1:765446934481:web:471f71de2e302cb5041af0",
+} as const;
+
+const getFirebaseConfigValue = (key: keyof typeof firebaseDefaults) => getEnvValue(key) || firebaseDefaults[key];
+
 const firebaseConfig = {
-  apiKey: getEnvValue("VITE_FIREBASE_API_KEY"),
-  authDomain: getEnvValue("VITE_FIREBASE_AUTH_DOMAIN"),
-  projectId: getEnvValue("VITE_FIREBASE_PROJECT_ID"),
-  appId: getEnvValue("VITE_FIREBASE_APP_ID"),
+  apiKey: getFirebaseConfigValue("VITE_FIREBASE_API_KEY"),
+  authDomain: getFirebaseConfigValue("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: getFirebaseConfigValue("VITE_FIREBASE_PROJECT_ID"),
+  appId: getFirebaseConfigValue("VITE_FIREBASE_APP_ID"),
 };
 
 export const getFirebaseMissingConfig = () =>
-  firebaseEnvKeys.filter((key) => !getEnvValue(key));
+  firebaseEnvKeys.filter((key) => !getFirebaseConfigValue(key));
 
 export const isFirebaseConfigured = getFirebaseMissingConfig().length === 0;
 
