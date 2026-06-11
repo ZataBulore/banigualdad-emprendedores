@@ -49,7 +49,7 @@ import {
   subscribeSolicitudesEmprendimiento,
   updateSolicitudEmprendimiento,
 } from "./services/firebase";
-import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
@@ -79,6 +79,7 @@ const MAX_IMAGE_BYTES = 120 * 1024;
 const MAX_IMAGE_SIDE = 960;
 const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
 const MAX_EMPRENDIMIENTO_FOTOS = 4;
+const MAX_REUNION_FOTOS = 6;
 const ACCEPTED_FOTO_TYPES = "image/*";
 const IMAGE_EXTENSION_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i;
 
@@ -442,6 +443,19 @@ const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto>
   const image = await compressImageFile(file);
   return {
     id: `foto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    ...image,
+    createdAt: new Date().toISOString(),
+  };
+};
+
+const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
+  if (!isImageFile(file)) {
+    throw new Error("Solo se aceptan imagenes para las minutas.");
+  }
+
+  const image = await compressImageFile(file);
+  return {
+    id: `minuta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     ...image,
     createdAt: new Date().toISOString(),
   };
@@ -1047,7 +1061,7 @@ function App() {
     });
 
     const rows = [
-      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "nombre_contacto_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "comprobante_adjunto", "observacion", "acta"],
+      ["tipo", "periodo", "vencimiento", "nombre", "rut", "whatsapp_principal", "whatsapp_secundario", "nombre_contacto_secundario", "estado_persona", "fecha_baja", "motivo_baja", "credito", "cuota", "seguro", "total", "pagado", "estado", "fecha_pago", "metodo", "referencia_pago", "comprobante_adjunto", "observacion", "acta", "fotos_reunion"],
       ...state.cobros.map((cobro) => {
         const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
         const persona = personasPorId.get(cobro.emprendedorId);
@@ -1074,6 +1088,7 @@ function App() {
           cobro.referenciaPago,
           cobro.comprobanteAdjunto?.nombre ?? "",
           cobro.observacion,
+          "",
           "",
         ];
       }),
@@ -1102,6 +1117,7 @@ function App() {
           pago.referenciaPago,
           pago.comprobanteAdjunto?.nombre ?? "",
           pago.observacion,
+          "",
           "",
         ];
       }),
@@ -1132,6 +1148,7 @@ function App() {
             "",
             asistencia.observacion || reunion.observacion,
             reunion.acta,
+            reunion.fotos.map((foto) => foto.nombre).join("; "),
           ];
         }),
       ),
@@ -1161,6 +1178,7 @@ function App() {
           emprendimiento.fotos.map((foto) => foto.nombre).join("; "),
           `${emprendimiento.nombre}. ${emprendimiento.descripcion}${emprendimiento.notas ? ` · ${emprendimiento.notas}` : ""}`,
           [emprendimiento.whatsapp, emprendimiento.correo, emprendimiento.redesSociales].filter(Boolean).join(" · "),
+          "",
         ];
       }),
     ];
@@ -2093,17 +2111,23 @@ function PublicEmprendimientoForm({
   const [fotoError, setFotoError] = useState("");
   const [fotoLoading, setFotoLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const personasDelPeriodo = useMemo(() => {
-    const idsPeriodo = new Set(cobros.filter((cobro) => cobro.periodoId === periodo?.id).map((cobro) => cobro.emprendedorId));
-    const base = idsPeriodo.size ? personas.filter((persona) => idsPeriodo.has(persona.id)) : personas;
-    return base.filter((persona) => persona.estado === "activa");
-  }, [cobros, periodo?.id, personas]);
+  const idsPeriodoPublico = useMemo(
+    () => new Set(cobros.filter((cobro) => cobro.periodoId === periodo?.id).map((cobro) => cobro.emprendedorId)),
+    [cobros, periodo?.id],
+  );
+  const personasActivas = useMemo(
+    () => personas.filter((persona) => persona.estado === "activa"),
+    [personas],
+  );
+  const personaValidadaEnPeriodo = Boolean(
+    personaValidada && (!idsPeriodoPublico.size || idsPeriodoPublico.has(personaValidada.id)),
+  );
 
   useEffect(() => {
     if (!rutConsultado || !personaValidada) return;
     const personaActualizada =
-      personasDelPeriodo.find((persona) => persona.id === personaValidada.id) ??
-      personasDelPeriodo.find((persona) => cleanRut(persona.rut) === cleanRut(form.rut));
+      personasActivas.find((persona) => persona.id === personaValidada.id) ??
+      personasActivas.find((persona) => cleanRut(persona.rut) === cleanRut(form.rut));
     if (!personaActualizada) return;
 
     setPersonaValidada(personaActualizada);
@@ -2114,7 +2138,7 @@ function PublicEmprendimientoForm({
       if (current.whatsapp.trim()) return current;
       return { ...current, whatsapp: whatsappRegistrado };
     });
-  }, [form.rut, personaValidada, personasDelPeriodo, rutConsultado]);
+  }, [form.rut, personaValidada, personasActivas, rutConsultado]);
 
   const contactoValido = Boolean(form.whatsapp.trim() || form.correo.trim());
   const fichaValidadaSinWhatsapp = Boolean(
@@ -2125,7 +2149,7 @@ function PublicEmprendimientoForm({
       !personaValidada.whatsappSecundario,
   );
   const errors = {
-    rut: personaValidada ? "" : "Ingresa un RUT que este registrado en el periodo de pagos vigente.",
+    rut: personaValidada ? "" : "Ingresa un RUT que este registrado como persona activa del sistema.",
     nombreContacto: form.nombreContacto.trim() ? "" : "Indica tu nombre.",
     nombreEmprendimiento: form.nombreEmprendimiento.trim() ? "" : "Indica como se llama el emprendimiento.",
     rubro: form.rubro.trim() ? "" : "Elige o escribe un rubro.",
@@ -2141,7 +2165,7 @@ function PublicEmprendimientoForm({
 
   const validarRut = () => {
     const rutFormateado = formatRut(form.rut);
-    const persona = personasDelPeriodo.find((item) => cleanRut(item.rut) === cleanRut(rutFormateado));
+    const persona = personasActivas.find((item) => cleanRut(item.rut) === cleanRut(rutFormateado));
     setRutConsultado(true);
     setPersonaValidada(persona ?? null);
 
@@ -2160,7 +2184,7 @@ function PublicEmprendimientoForm({
       ...current,
       rut: formatRut(persona.rut),
       emprendedorId: persona.id,
-      periodoValidadoId: periodo?.id ?? "",
+      periodoValidadoId: idsPeriodoPublico.has(persona.id) ? periodo?.id ?? "" : "",
       creditoOriginal: persona.creditoOriginal,
       nombreContacto: current.nombreContacto.trim() || persona.nombre,
       whatsapp: formatWhatsapp(persona.whatsapp || persona.whatsappSecundario || current.whatsapp),
@@ -2206,7 +2230,7 @@ function PublicEmprendimientoForm({
         ...form,
         rut: formatRut(form.rut),
         emprendedorId: personaValidada?.id ?? form.emprendedorId,
-        periodoValidadoId: periodo?.id ?? form.periodoValidadoId,
+        periodoValidadoId: personaValidada && idsPeriodoPublico.has(personaValidada.id) ? periodo?.id ?? "" : form.periodoValidadoId,
         creditoOriginal: personaValidada?.creditoOriginal ?? form.creditoOriginal ?? 0,
         nombreContacto: form.nombreContacto.trim(),
         whatsapp: formatWhatsapp(form.whatsapp),
@@ -2243,7 +2267,7 @@ function PublicEmprendimientoForm({
           <ModalField
             label="RUT de la persona registrada"
             error={rutConsultado && !personaValidada ? errors.rut : undefined}
-            hint={periodo ? `Debe coincidir con una persona activa de la cuota ${periodo.numeroCuota}.` : "Debe coincidir con una persona activa del sistema."}
+            hint="Debe coincidir con una persona activa del sistema interno."
           >
             <input
               value={form.rut}
@@ -2266,9 +2290,17 @@ function PublicEmprendimientoForm({
             <Check size={17} />
             <div>
               <strong>{personaValidada.nombre}</strong>
-              <span>{formatRut(personaValidada.rut)} · credito {formatCurrency(personaValidada.creditoOriginal)}</span>
+              <span>
+                {formatRut(personaValidada.rut)} · credito {formatCurrency(personaValidada.creditoOriginal)}
+                {!personaValidadaEnPeriodo && periodo ? ` · fuera de cuota ${periodo.numeroCuota}` : ""}
+              </span>
             </div>
           </div>
+        )}
+        {personaValidada && !personaValidadaEnPeriodo && periodo && (
+          <p className="receipt-help warning">
+            El RUT existe en Personas, pero no aparece en la cuota vigente {periodo.numeroCuota}. Se puede enviar igual; el equipo lo revisara antes de publicar.
+          </p>
         )}
         {fichaValidadaSinWhatsapp && (
           <p className="receipt-help warning">
@@ -2276,7 +2308,7 @@ function PublicEmprendimientoForm({
           </p>
         )}
         {rutConsultado && !personaValidada && (
-          <p className="receipt-help warning">No encontramos este RUT en las personas activas del periodo vigente. Revisa el numero o contacta al equipo antes de enviar el emprendimiento.</p>
+          <p className="receipt-help warning">No encontramos este RUT en las personas activas del sistema. Revisa el numero o contacta al equipo antes de enviar el emprendimiento.</p>
         )}
       </section>
 
@@ -3976,6 +4008,10 @@ function AsistenciasPanel({
   const [fecha, setFecha] = useState(today);
   const [lugar, setLugar] = useState("");
   const [acta, setActa] = useState("");
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [fotoPreview, setFotoPreview] = useState<ReunionFoto | null>(null);
+  const [fotoZoom, setFotoZoom] = useState(1);
 
   const crear = () => {
     onCrearReunion({
@@ -4010,6 +4046,40 @@ function AsistenciasPanel({
     });
     if (!confirmed) return;
     onTodosPresentes(reunionActiva.id);
+  };
+
+  const agregarFotosMinuta = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!reunionActiva || !files.length) return;
+
+    if (reunionActiva.fotos.length + files.length > MAX_REUNION_FOTOS) {
+      setFotoError(`Puedes guardar hasta ${MAX_REUNION_FOTOS} fotos por reunion.`);
+      return;
+    }
+
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      const fotos = await Promise.all(files.map(createReunionFoto));
+      onReunion(reunionActiva.id, { fotos: [...reunionActiva.fotos, ...fotos] });
+    } catch (error) {
+      setFotoError(error instanceof Error ? error.message : "No se pudieron adjuntar las fotos.");
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const quitarFotoMinuta = async (foto: ReunionFoto) => {
+    if (!reunionActiva) return;
+    const confirmed = await confirmarAccionCritica(`Quitar "${foto.nombre}" de la reunion? La foto dejara de estar disponible y esta accion quedara en auditoria.`, {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "danger",
+      confirmLabel: "Quitar foto",
+    });
+    if (!confirmed) return;
+    setFotoPreview((current) => (current?.id === foto.id ? null : current));
+    onReunion(reunionActiva.id, { fotos: reunionActiva.fotos.filter((item) => item.id !== foto.id) });
   };
 
   return (
@@ -4100,10 +4170,97 @@ function AsistenciasPanel({
                     rows={5}
                   />
                 </label>
+                <section className="meeting-notebook-photos">
+                  <header>
+                    <div>
+                      <span>Fotos minuta</span>
+                      <strong>{reunionActiva.fotos.length}/{MAX_REUNION_FOTOS}</strong>
+                    </div>
+                    <label className={fotoLoading || reunionActiva.fotos.length >= MAX_REUNION_FOTOS ? "secondary-button disabled" : "secondary-button"}>
+                      {fotoLoading ? <span className="inline-spinner" aria-hidden="true" /> : <ImagePlus size={16} />}
+                      {fotoLoading ? "Redimensionando" : "Adjuntar foto"}
+                      <input
+                        type="file"
+                        accept={ACCEPTED_FOTO_TYPES}
+                        multiple
+                        disabled={fotoLoading || reunionActiva.fotos.length >= MAX_REUNION_FOTOS}
+                        onChange={agregarFotosMinuta}
+                      />
+                    </label>
+                  </header>
+                  {fotoError && <p className="attachment-error">{fotoError}</p>}
+                  <div className="meeting-photo-list">
+                    {reunionActiva.fotos.map((foto) => (
+                      <figure key={foto.id}>
+                        <button
+                          type="button"
+                          className="meeting-photo-preview-button"
+                          onClick={() => {
+                            setFotoZoom(1);
+                            setFotoPreview(foto);
+                          }}
+                          aria-label={`Ver ${foto.nombre}`}
+                        >
+                          <img src={foto.dataUrl} alt={`Minuta ${foto.nombre}`} />
+                        </button>
+                        <figcaption>
+                          <span>{foto.nombre}</span>
+                          <small>{formatFileSize(foto.tamano)}</small>
+                        </figcaption>
+                        <div className="meeting-photo-actions">
+                          <button type="button" className="secondary-button" onClick={() => {
+                            setFotoZoom(1);
+                            setFotoPreview(foto);
+                          }}>
+                            <Eye size={15} /> Ver
+                          </button>
+                          <button type="button" className="danger-button compact" onClick={() => void quitarFotoMinuta(foto)}>
+                            <Trash2 size={15} /> Quitar
+                          </button>
+                        </div>
+                      </figure>
+                    ))}
+                    {!reunionActiva.fotos.length && <p className="empty-state">Sin fotos de minuta adjuntas.</p>}
+                  </div>
+                </section>
                 <button className="mark-all-present-button" onClick={marcarTodos}>
                   <CheckCircle2 size={17} /> Marcar a todos presentes
                 </button>
               </section>
+
+              {fotoPreview && (
+                <div className="modal-backdrop" role="presentation">
+                  <section className="attachment-preview-modal" role="dialog" aria-modal="true" aria-labelledby="meeting-photo-preview-title">
+                    <header>
+                      <div>
+                        <p className="eyebrow">Minuta fotografiada</p>
+                        <h2 id="meeting-photo-preview-title">{fotoPreview.nombre}</h2>
+                        <span>{formatFileSize(fotoPreview.tamano)} · {formatDateTime(fotoPreview.createdAt)}</span>
+                      </div>
+                      <button className="icon-button" onClick={() => setFotoPreview(null)} aria-label="Cerrar foto de minuta">
+                        <X size={20} />
+                      </button>
+                    </header>
+                    <div className="preview-toolbar">
+                      <div className="zoom-controls" aria-label="Zoom de la foto">
+                        <button type="button" onClick={() => setFotoZoom((current) => Math.max(current - 0.2, 0.6))} aria-label="Disminuir zoom">
+                          <ZoomOut size={18} />
+                        </button>
+                        <span>{Math.round(fotoZoom * 100)}%</span>
+                        <button type="button" onClick={() => setFotoZoom((current) => Math.min(current + 0.2, 2.4))} aria-label="Aumentar zoom">
+                          <ZoomIn size={18} />
+                        </button>
+                      </div>
+                      <a className="secondary-button" href={fotoPreview.dataUrl} download={fotoPreview.nombre}>
+                        <Download size={16} /> Descargar
+                      </a>
+                    </div>
+                    <div className="preview-stage">
+                      <img src={fotoPreview.dataUrl} alt={`Minuta ${fotoPreview.nombre}`} style={{ transform: `scale(${fotoZoom})` }} />
+                    </div>
+                  </section>
+                </div>
+              )}
 
               <section className="summary-grid compact attendance-summary">
                 <SummaryCard icon={<CheckCircle2 />} label="Presentes" value={String(totals.presente)} tone="success" />

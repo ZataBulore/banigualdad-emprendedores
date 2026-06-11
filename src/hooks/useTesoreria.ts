@@ -228,6 +228,7 @@ const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): 
     lugar: reunion.lugar ?? "",
     observacion: reunion.observacion ?? "",
     acta: reunion.acta ?? "",
+    fotos: reunion.fotos ?? [],
     asistencias: emprendedores.map((emprendedor) => ({
       emprendedorId: emprendedor.id,
       estado: existentes.get(emprendedor.id)?.estado ?? "pendiente",
@@ -977,6 +978,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
             lugar: reunion.lugar?.trim() ?? "",
             observacion: reunion.observacion?.trim() ?? "",
             acta: reunion.acta?.trim() ?? "",
+            fotos: [],
             asistencias: crearAsistenciasBase(current.emprendedores),
           },
         ],

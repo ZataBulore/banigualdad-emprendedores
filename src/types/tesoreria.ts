@@ -205,6 +205,15 @@ export interface AsistenciaParticipante {
   observacion: string;
 }
 
+export interface ReunionFoto {
+  id: string;
+  nombre: string;
+  tipo: string;
+  dataUrl: string;
+  tamano: number;
+  createdAt: string;
+}
+
 export interface Reunion {
   id: string;
   titulo: string;
@@ -212,6 +221,7 @@ export interface Reunion {
   lugar: string;
   observacion: string;
   acta: string;
+  fotos: ReunionFoto[];
   asistencias: AsistenciaParticipante[];
 }
 
