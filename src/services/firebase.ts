@@ -1,5 +1,6 @@
 import { FirebaseError, initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { addDoc, collection, doc, getDoc, getDocs, getFirestore, initializeFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import type { SolicitudEmprendimiento, TesoreriaState } from "../types/tesoreria";
 
@@ -61,6 +62,14 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 export const signInFirebaseWithGoogle = async () => {
   if (!firebaseAuth) return null;
   return signInWithPopup(firebaseAuth, googleProvider);
+};
+
+export const subscribeFirebaseAuthState = (callback: (user: User | null) => void) => {
+  if (!firebaseAuth) {
+    callback(null);
+    return () => undefined;
+  }
+  return onAuthStateChanged(firebaseAuth, callback);
 };
 
 export const signOutFirebase = async () => {

@@ -46,8 +46,6 @@ Solo necesitas copiar `apiKey`, `authDomain`, `projectId` y `appId`.
 2. Copia esta plantilla y reemplaza los valores:
 
 ```env
-VITE_GOOGLE_CLIENT_ID=tu-client-id-de-google.apps.googleusercontent.com
-
 VITE_FIREBASE_API_KEY=tu-api-key
 VITE_FIREBASE_AUTH_DOMAIN=tu-proyecto.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=tu-project-id
@@ -68,24 +66,20 @@ Notas:
 - `VITE_FIREBASE_COLLECTION` y `VITE_FIREBASE_DOCUMENT_ID` definen donde se guardara todo el sistema: `centros/semilla-emprende-negrete`.
 - Si quieres usar otro documento para pruebas, cambia `VITE_FIREBASE_DOCUMENT_ID`, por ejemplo `semilla-emprende-negrete-test`.
 
-## 5. Conseguir `VITE_GOOGLE_CLIENT_ID`
+## 5. Autorizar dominios para Firebase Auth
 
-La app usa Google Identity Services para iniciar sesion y luego enlaza esa credencial con Firebase Auth.
+La app inicia sesion directamente con Firebase Authentication y Google. Para que el popup funcione, Firebase debe reconocer el dominio desde donde se abre la app.
 
-1. Entra a [Google Cloud Console](https://console.cloud.google.com/).
-2. Selecciona el mismo proyecto asociado a Firebase.
-3. Ve a **APIs & Services > Credentials**.
-4. Crea o abre un **OAuth client ID** de tipo **Web application**.
-5. En **Authorized JavaScript origins**, agrega:
+1. En Firebase, entra a **Build > Authentication**.
+2. Abre **Settings**.
+3. En **Authorized domains**, agrega:
 
 ```txt
-http://localhost:5173
-https://TU_USUARIO.github.io
+localhost
+sergiozata.github.io
 ```
 
-6. Copia el **Client ID** en `VITE_GOOGLE_CLIENT_ID`.
-
-Si usas un dominio propio, agregalo tambien como origen autorizado.
+Si usas un dominio propio, agregalo tambien. Si ves `auth/unauthorized-domain` al iniciar sesion, falta agregar el dominio exacto que muestra el navegador.
 
 ## 6. Reglas recomendadas de Firestore
 

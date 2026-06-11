@@ -45,6 +45,7 @@ import {
   createSolicitudEmprendimiento,
   signInFirebaseWithGoogle,
   signOutFirebase,
+  subscribeFirebaseAuthState,
   subscribeSolicitudesEmprendimiento,
   updateSolicitudEmprendimiento,
 } from "./services/firebase";
@@ -453,6 +454,7 @@ const formatFileSize = (bytes: number) => {
 };
 
 const loadAuthSession = () => {
+  if (isFirebaseConfigured) return null;
   try {
     const stored = window.localStorage.getItem(AUTH_SESSION_KEY) ?? window.sessionStorage.getItem(AUTH_SESSION_KEY);
     if (!stored) return null;
@@ -471,7 +473,15 @@ const loadAuthSession = () => {
 const getFirebaseAuthErrorDetail = (error: unknown) => {
   const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
   const message = error instanceof Error ? error.message : "";
+  if (code === "auth/unauthorized-domain") {
+    return `auth/unauthorized-domain: agrega ${window.location.hostname} en Firebase Authentication > Settings > Authorized domains.`;
+  }
   return [code, message].filter(Boolean).join(": ");
+};
+
+const clearStoredAuthSession = () => {
+  window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+  window.localStorage.removeItem(AUTH_SESSION_KEY);
 };
 
 const getPublicRoute = (): PublicRoute => {
@@ -801,6 +811,40 @@ function App() {
     [state.configuracion.seguridad.correosAutorizados],
   );
 
+  useEffect(() => {
+    if (!isFirebaseConfigured) return;
+
+    return subscribeFirebaseAuthState((firebaseUser) => {
+      if (!firebaseUser?.email) {
+        clearStoredAuthSession();
+        setAuthUser(null);
+        return;
+      }
+
+      const user: AuthUser = {
+        email: firebaseUser.email.toLowerCase(),
+        nombre: firebaseUser.displayName ?? firebaseUser.email,
+        foto: firebaseUser.photoURL ?? undefined,
+        authSource: "google",
+        sessionVersion: AUTH_SESSION_VERSION,
+      };
+      const isAllowed = !correosAutorizados.length || correosAutorizados.includes(user.email);
+
+      if (!isAllowed) {
+        clearStoredAuthSession();
+        void signOutFirebase();
+        setAuthUser(null);
+        setAuthError(`La cuenta ${user.email} no esta autorizada para ver este sistema.`);
+        return;
+      }
+
+      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(user));
+      window.sessionStorage.removeItem(AUTH_SESSION_KEY);
+      setAuthUser(user);
+      setAuthError("");
+    });
+  }, [correosAutorizados]);
+
   const handleGoogleLogin = async () => {
     setAuthError("");
     let credential: Awaited<ReturnType<typeof signInFirebaseWithGoogle>>;
@@ -828,8 +872,7 @@ function App() {
     const isAllowed = !correosAutorizados.length || correosAutorizados.includes(email);
 
     if (!isAllowed) {
-      window.sessionStorage.removeItem(AUTH_SESSION_KEY);
-      window.localStorage.removeItem(AUTH_SESSION_KEY);
+      clearStoredAuthSession();
       void signOutFirebase();
       setAuthUser(null);
       setAuthError(`La cuenta ${email} no esta autorizada para ver este sistema.`);
@@ -850,8 +893,7 @@ function App() {
       confirmLabel: "Cerrar sesion",
     });
     if (!confirmed) return;
-    window.sessionStorage.removeItem(AUTH_SESSION_KEY);
-    window.localStorage.removeItem(AUTH_SESSION_KEY);
+    clearStoredAuthSession();
     void signOutFirebase();
     setAuthUser(null);
   };
