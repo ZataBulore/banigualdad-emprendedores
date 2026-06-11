@@ -45,7 +45,7 @@ const normalizeFirestoreDatabaseId = (databaseId: string) => {
   return normalized;
 };
 
-export const FIREBASE_DATABASE_ID = normalizeFirestoreDatabaseId(getEnvValue("VITE_FIREBASE_DATABASE_ID"));
+export const FIREBASE_DATABASE_ID = normalizeFirestoreDatabaseId(getEnvValue("VITE_FIREBASE_DATABASE_ID") || "default");
 
 export const FIREBASE_SOLICITUDES_COLLECTION =
   import.meta.env.VITE_FIREBASE_SOLICITUDES_COLLECTION || "solicitudesEmprendimientos";
