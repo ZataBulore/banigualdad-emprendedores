@@ -98,6 +98,10 @@ const getSolicitudesCollection = () => {
 
 const mapSolicitud = (id: string, data: Record<string, unknown>): SolicitudEmprendimiento => ({
   id,
+  rut: String(data.rut ?? ""),
+  emprendedorId: data.emprendedorId ? String(data.emprendedorId) : "",
+  periodoValidadoId: data.periodoValidadoId ? String(data.periodoValidadoId) : "",
+  creditoOriginal: Number(data.creditoOriginal ?? 0),
   nombreContacto: String(data.nombreContacto ?? ""),
   whatsapp: String(data.whatsapp ?? ""),
   correo: String(data.correo ?? ""),
@@ -164,7 +168,7 @@ export const subscribeSolicitudesEmprendimiento = (
 
 export const updateSolicitudEmprendimiento = async (
   id: string,
-  patch: Partial<Pick<SolicitudEmprendimiento, "estado" | "notas">>,
+  patch: Partial<Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "origen">>,
 ) => {
   if (!firestore) throw new Error("Firebase no esta configurado.");
   await setDoc(

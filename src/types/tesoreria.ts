@@ -87,6 +87,10 @@ export type EstadoSolicitudEmprendimiento = "nueva" | "revisada" | "convertida" 
 
 export interface SolicitudEmprendimiento {
   id: string;
+  rut: string;
+  emprendedorId?: string;
+  periodoValidadoId?: string;
+  creditoOriginal?: number;
   nombreContacto: string;
   whatsapp: string;
   correo: string;
