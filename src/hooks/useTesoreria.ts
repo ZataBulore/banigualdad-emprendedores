@@ -316,7 +316,7 @@ const loadState = (): TesoreriaState => {
   }
 };
 
-export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: string } = {}) => {
+export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled?: boolean; updatedBy?: string } = {}) => {
   const [state, setState] = useState<TesoreriaState>(loadState);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(
     isFirebaseConfigured ? "connecting" : "local",
@@ -337,6 +337,25 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
     if (!isFirebaseConfigured) {
       setCloudStatus("local");
       setCloudError(`Faltan variables Firebase: ${getFirebaseMissingConfig().join(", ")}.`);
+      remoteReadyRef.current = false;
+      return;
+    }
+
+    if (!options.syncEnabled && options.publicReadEnabled) {
+      setCloudStatus("connecting");
+      setCloudError("");
+      readRemoteState()
+        .then((remoteState) => {
+          if (remoteState) {
+            applyingRemoteRef.current = true;
+            setState(migrateState(remoteState));
+          }
+          setCloudStatus("local");
+        })
+        .catch((error) => {
+          setCloudStatus("error");
+          setCloudError(error instanceof Error ? error.message : "No se pudo leer la vitrina desde Firebase.");
+        });
       remoteReadyRef.current = false;
       return;
     }
@@ -388,7 +407,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; updatedBy?: strin
       cancelled = true;
       unsubscribe();
     };
-  }, [options.syncEnabled, options.updatedBy]);
+  }, [options.publicReadEnabled, options.syncEnabled, options.updatedBy]);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !options.syncEnabled || !remoteReadyRef.current) return;

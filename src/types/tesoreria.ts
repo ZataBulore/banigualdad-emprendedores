@@ -83,6 +83,31 @@ export interface Emprendimiento {
   updatedAt: string;
 }
 
+export type EstadoSolicitudEmprendimiento = "nueva" | "revisada" | "convertida" | "descartada";
+
+export interface SolicitudEmprendimiento {
+  id: string;
+  nombreContacto: string;
+  whatsapp: string;
+  correo: string;
+  nombreEmprendimiento: string;
+  rubro: string;
+  descripcion: string;
+  direccion: string;
+  sector: string;
+  comuna: string;
+  canalesVenta: string[];
+  horarios: string[];
+  redesSociales: string;
+  necesidades: string[];
+  fotos: EmprendimientoFoto[];
+  estado: EstadoSolicitudEmprendimiento;
+  origen: "formulario-publico";
+  notas?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CobroSemanal {
   id: string;
   periodoId: string;

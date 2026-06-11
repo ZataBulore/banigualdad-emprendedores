@@ -42,6 +42,7 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_COLLECTION: ${{ vars.VITE_FIREBASE_COLLECTION }}
           VITE_FIREBASE_DOCUMENT_ID: ${{ vars.VITE_FIREBASE_DOCUMENT_ID }}
+          VITE_FIREBASE_SOLICITUDES_COLLECTION: ${{ vars.VITE_FIREBASE_SOLICITUDES_COLLECTION }}
         run: npm run build
 
       - name: Upload Pages artifact

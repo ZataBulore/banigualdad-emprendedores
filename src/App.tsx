@@ -42,15 +42,19 @@ import { useTesoreria } from "./hooks/useTesoreria";
 import {
   getFirebaseMissingConfig,
   isFirebaseConfigured,
+  createSolicitudEmprendimiento,
   signInFirebaseWithGoogleCredential,
   signOutFirebase,
+  subscribeSolicitudesEmprendimiento,
+  updateSolicitudEmprendimiento,
 } from "./services/firebase";
-import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
 type Tab = "cobros" | "ces" | "personas" | "emprendimientos" | "asistencias" | "config";
 type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
+type PublicRoute = "home" | "form" | "admin";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">;
@@ -132,6 +136,24 @@ const emprendimientoEstadoLabels: Record<EstadoEmprendimiento, string> = {
 const emprendimientoEstadoOptions: EstadoEmprendimiento[] = ["activo", "pausado", "cerrado"];
 
 const ANILLO_PERSONA_LABEL = "Anillo";
+const PUBLIC_FORM_HASH = "ingresa-tu-emprendimiento";
+
+const rubroSugerencias = [
+  "Alimentos",
+  "Belleza y cuidado",
+  "Ropa y accesorios",
+  "Artesania",
+  "Servicios",
+  "Comercio",
+  "Agricultura",
+  "Mascotas",
+  "Reparaciones",
+  "Otro",
+] as const;
+
+const canalesVentaSugeridos = ["Local/casa", "Delivery", "A pedido", "Ferias", "Online", "Retiro"] as const;
+const horariosSugeridos = ["Manana", "Tarde", "Noche", "Fin de semana", "Coordinar por WhatsApp"] as const;
+const necesidadesSugeridas = ["Quiero aparecer en la vitrina", "Necesito actualizar datos", "Quiero agregar fotos", "Busco nuevos clientes", "Puedo recibir encargos"] as const;
 
 type AppDialogTone = "info" | "warning" | "danger" | "success";
 type AppDialogRequest = {
@@ -457,6 +479,13 @@ const loadAuthSession = () => {
   }
 };
 
+const getPublicRoute = (): PublicRoute => {
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (hash === "admin" || hash === "login" || hash === "sistema") return "admin";
+  if (hash === PUBLIC_FORM_HASH || hash === "formulario") return "form";
+  return "home";
+};
+
 const formatDateTime = (value?: string) =>
   value
     ? new Intl.DateTimeFormat("es-CL", {
@@ -651,6 +680,8 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => loadAuthSession());
   const [authError, setAuthError] = useState("");
   const [dialogRequest, setDialogRequest] = useState<AppDialogRequest | null>(null);
+  const [publicRoute, setPublicRoute] = useState<PublicRoute>(() => getPublicRoute());
+  const isAdminRoute = publicRoute === "admin";
   const {
     state,
     cloudStatus,
@@ -683,7 +714,13 @@ function App() {
     registrarMovimiento,
     importar,
     resetear,
-  } = useTesoreria({ syncEnabled: Boolean(authUser), updatedBy: authUser?.email });
+  } = useTesoreria({
+    syncEnabled: Boolean(authUser && isAdminRoute),
+    publicReadEnabled: !isAdminRoute,
+    updatedBy: authUser?.email,
+  });
+  const [solicitudes, setSolicitudes] = useState<SolicitudEmprendimiento[]>([]);
+  const [solicitudesError, setSolicitudesError] = useState("");
   const [tab, setTab] = useState<Tab>("cobros");
   const [periodoId, setPeriodoId] = useState(() => getSemanaCobroInicial(state.periodos));
   const [reunionId, setReunionId] = useState(state.reuniones[0]?.id ?? "");
@@ -698,6 +735,25 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => subscribeAppDialogs(setDialogRequest), []);
+
+  useEffect(() => {
+    const handleHash = () => setPublicRoute(getPublicRoute());
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
+  useEffect(() => {
+    if (!authUser || !isFirebaseConfigured) {
+      setSolicitudes([]);
+      setSolicitudesError("");
+      return;
+    }
+
+    return subscribeSolicitudesEmprendimiento(
+      setSolicitudes,
+      setSolicitudesError,
+    );
+  }, [authUser]);
 
   useEffect(() => {
     const applyPressFeedback = (target: EventTarget | null) => {
@@ -1112,6 +1168,55 @@ function App() {
     });
   };
 
+  const goPublicHome = () => {
+    window.location.hash = "";
+    setPublicRoute("home");
+  };
+
+  const goPublicForm = () => {
+    window.location.hash = PUBLIC_FORM_HASH;
+    setPublicRoute("form");
+    scrollToTop();
+  };
+
+  const goAdminLogin = () => {
+    window.location.hash = "admin";
+    setPublicRoute("admin");
+    scrollToTop();
+  };
+
+  if (!isAdminRoute) {
+    return (
+      <main className="public-shell">
+        <AppDialogHost request={dialogRequest} />
+        <PublicHome
+          route={publicRoute}
+          centro={state.centro}
+          emprendimientos={state.emprendimientos}
+          personasPorId={personasPorId}
+          onLogin={goAdminLogin}
+          onHome={goPublicHome}
+          onOpenForm={goPublicForm}
+          onSubmitSolicitud={async (payload) => {
+            try {
+              await createSolicitudEmprendimiento(payload);
+              await informarSistema("Recibimos los datos del emprendimiento. El equipo los revisara para agregarlos a la central.", {
+                title: "Semilla Emprende Negrete informa",
+                tone: "success",
+              });
+              goPublicHome();
+            } catch (error) {
+              await informarSistema(error instanceof Error ? error.message : "No se pudo enviar el formulario. Intentalo nuevamente.", {
+                title: "Semilla Emprende Negrete informa",
+                tone: "danger",
+              });
+            }
+          }}
+        />
+      </main>
+    );
+  }
+
   if (!authUser) {
     return (
       <LoginGate
@@ -1119,6 +1224,7 @@ function App() {
         allowedEmails={correosAutorizados}
         error={authError}
         onLogin={handleGoogleLogin}
+        onPublicHome={goPublicHome}
       />
     );
   }
@@ -1419,6 +1525,8 @@ function App() {
           personas={state.emprendedores}
           personasPorId={personasPorId}
           periodos={state.periodos}
+          solicitudes={solicitudes}
+          solicitudesError={solicitudesError}
           busqueda={busqueda}
           onBusqueda={setBusqueda}
           onNuevo={() => setNuevoEmprendimientoAbierto(true)}
@@ -1435,6 +1543,23 @@ function App() {
           onPersona={(personaId) => {
             setPersonaActiva(personaId);
             goToTab("personas");
+          }}
+          onSolicitudEstado={async (id, estado) => {
+            try {
+              await updateSolicitudEmprendimiento(id, { estado });
+              const solicitud = solicitudes.find((item) => item.id === id);
+              registrarMovimiento({
+                tipo: "emprendimiento",
+                accion: "Solicitud de emprendimiento actualizada",
+                detalle: `${solicitud?.nombreEmprendimiento ?? "Solicitud"} quedo en estado ${estado}. Origen formulario publico.`,
+                entidadId: id,
+                personaNombre: solicitud?.nombreContacto,
+              });
+            } catch (error) {
+              await informarSistema(error instanceof Error ? error.message : "No se pudo actualizar la solicitud.", {
+                tone: "danger",
+              });
+            }
           }}
         />
       )}
@@ -1556,16 +1681,386 @@ function App() {
   );
 }
 
+function PublicHome({
+  route,
+  centro,
+  emprendimientos,
+  personasPorId,
+  onLogin,
+  onHome,
+  onOpenForm,
+  onSubmitSolicitud,
+}: {
+  route: PublicRoute;
+  centro: Centro;
+  emprendimientos: Emprendimiento[];
+  personasPorId: Map<string, Emprendedor>;
+  onLogin: () => void;
+  onHome: () => void;
+  onOpenForm: () => void;
+  onSubmitSolicitud: (payload: Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">) => Promise<void>;
+}) {
+  const [busquedaPublica, setBusquedaPublica] = useState("");
+  const [rubroActivo, setRubroActivo] = useState("Todos");
+  const emprendimientosActivos = emprendimientos.filter((item) => item.estado === "activo");
+  const rubros = ["Todos", ...Array.from(new Set(emprendimientosActivos.map((item) => item.rubro).filter(Boolean))).sort()];
+  const emprendimientosVisibles = emprendimientosActivos.filter((item) => {
+    const persona = personasPorId.get(item.emprendedorId);
+    const matchesRubro = rubroActivo === "Todos" || item.rubro === rubroActivo;
+    return matchesRubro && matchesEmprendimientoSearch(item, persona, busquedaPublica);
+  });
+
+  return (
+    <>
+      <header className="public-header">
+        <button className="public-brand" onClick={onHome}>
+          <span><Sprout size={21} /></span>
+          <strong>Semilla Emprende Negrete</strong>
+        </button>
+        <nav>
+          <button className="secondary-button" onClick={onOpenForm}>Ingresa tu emprendimiento</button>
+          <button className="primary-button" onClick={onLogin}>Login</button>
+        </nav>
+      </header>
+
+      {route === "form" ? (
+        <PublicEmprendimientoForm onHome={onHome} onSubmit={onSubmitSolicitud} />
+      ) : (
+        <>
+          <section className="public-hero">
+            <div>
+              <p className="eyebrow">Central de emprendimientos</p>
+              <h1>{centro.nombreCentro}</h1>
+              <p>Conoce, comparte y contacta los emprendimientos de participantes del centro.</p>
+            </div>
+            <button className="primary-button" onClick={onOpenForm}>
+              <Plus size={18} /> Ingresa tu emprendimiento
+            </button>
+          </section>
+
+          <section className="public-toolbar">
+            <SearchInput
+              value={busquedaPublica}
+              onChange={setBusquedaPublica}
+              placeholder="Buscar por rubro, nombre, sector o contacto"
+            />
+            <div className="public-rubro-strip" aria-label="Rubros">
+              {rubros.map((rubro) => (
+                <button
+                  key={rubro}
+                  className={rubroActivo === rubro ? "chip active" : "chip"}
+                  onClick={() => setRubroActivo(rubro)}
+                >
+                  {rubro}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="public-venture-grid">
+            {emprendimientosVisibles.map((emprendimiento) => (
+              <PublicEmprendimientoCard
+                key={emprendimiento.id}
+                emprendimiento={emprendimiento}
+                persona={personasPorId.get(emprendimiento.emprendedorId)}
+              />
+            ))}
+            {!emprendimientosVisibles.length && (
+              <article className="public-empty">
+                <Store size={24} />
+                <strong>Aun no hay emprendimientos publicados para esta busqueda.</strong>
+                <span>El primero puede ingresar sus datos desde el formulario publico.</span>
+              </article>
+            )}
+          </section>
+        </>
+      )}
+    </>
+  );
+}
+
+function PublicEmprendimientoCard({
+  emprendimiento,
+  persona,
+}: {
+  emprendimiento: Emprendimiento;
+  persona?: Emprendedor;
+}) {
+  const foto = emprendimiento.fotos[0];
+  const shareText = `${emprendimiento.nombre} - ${emprendimiento.rubro || "Emprendimiento"}${emprendimiento.whatsapp ? ` - WhatsApp ${formatWhatsapp(emprendimiento.whatsapp)}` : ""}`;
+  const whatsappHref = emprendimiento.whatsapp ? buildWhatsappUrl(emprendimiento.whatsapp, `Hola, vi tu emprendimiento ${emprendimiento.nombre} en la central y quiero consultar.`) : "";
+
+  const copyCard = async () => {
+    await navigator.clipboard.writeText(`${shareText}\n${window.location.href}`);
+    await informarSistema("Ficha copiada para compartir.", { tone: "success" });
+  };
+
+  return (
+    <article className="public-venture-card">
+      <div className="public-venture-media">
+        {foto ? <img src={foto.dataUrl} alt={emprendimiento.nombre} /> : <Store size={34} />}
+      </div>
+      <div className="public-venture-content">
+        <p className="eyebrow">{emprendimiento.rubro || "Emprendimiento"}</p>
+        <h2>{emprendimiento.nombre}</h2>
+        <span className="public-owner">{persona?.nombre ?? "Participante del centro"}</span>
+        {emprendimiento.descripcion && <p>{emprendimiento.descripcion}</p>}
+        <div className="public-venture-facts">
+          {(emprendimiento.direccion || emprendimiento.sector) && <span><MapPin size={15} /> {[emprendimiento.direccion, emprendimiento.sector].filter(Boolean).join(" · ")}</span>}
+          {emprendimiento.whatsapp && <span><Phone size={15} /> {formatWhatsapp(emprendimiento.whatsapp)}</span>}
+          {emprendimiento.correo && <span><Mail size={15} /> {emprendimiento.correo}</span>}
+          {emprendimiento.redesSociales && <span><MessageCircle size={15} /> {emprendimiento.redesSociales}</span>}
+        </div>
+        <div className="public-card-actions">
+          {whatsappHref && <a className="primary-button" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Contactar</a>}
+          <button className="secondary-button" onClick={copyCard}><Send size={16} /> Compartir</button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function PublicEmprendimientoForm({
+  onHome,
+  onSubmit,
+}: {
+  onHome: () => void;
+  onSubmit: (payload: Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">) => Promise<void>;
+}) {
+  const [form, setForm] = useState<Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">>({
+    nombreContacto: "",
+    whatsapp: "",
+    correo: "",
+    nombreEmprendimiento: "",
+    rubro: "",
+    descripcion: "",
+    direccion: "",
+    sector: "",
+    comuna: "Negrete",
+    canalesVenta: [],
+    horarios: [],
+    redesSociales: "",
+    necesidades: ["Quiero aparecer en la vitrina"],
+    fotos: [],
+    notas: "",
+  });
+  const [customRubro, setCustomRubro] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const contactoValido = Boolean(form.whatsapp.trim() || form.correo.trim());
+  const errors = {
+    nombreContacto: form.nombreContacto.trim() ? "" : "Indica tu nombre.",
+    nombreEmprendimiento: form.nombreEmprendimiento.trim() ? "" : "Indica como se llama el emprendimiento.",
+    rubro: form.rubro.trim() ? "" : "Elige o escribe un rubro.",
+    contacto: contactoValido ? "" : "Deja al menos WhatsApp o correo.",
+    whatsapp: isValidWhatsapp(form.whatsapp) ? "" : "Revisa el WhatsApp.",
+    correo: !form.correo.trim() || isValidEmail(form.correo.trim()) ? "" : "Revisa el correo.",
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+
+  const updateForm = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const toggleOption = (key: "canalesVenta" | "horarios" | "necesidades", value: string) => {
+    setForm((current) => {
+      const selected = current[key].includes(value);
+      return {
+        ...current,
+        [key]: selected ? current[key].filter((item) => item !== value) : [...current[key], value],
+      };
+    });
+  };
+
+  const handleFotos = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (form.fotos.length + files.length > 3) {
+      setFotoError("Puedes enviar hasta 3 fotos en este formulario.");
+      return;
+    }
+    setFotoError("");
+    try {
+      const fotos = await Promise.all(files.map(createEmprendimientoFoto));
+      updateForm("fotos", [...form.fotos, ...fotos]);
+    } catch (error) {
+      setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
+    }
+  };
+
+  const submit = async () => {
+    setTouched(true);
+    if (hasErrors || submitting) return;
+    setSubmitting(true);
+    await onSubmit({
+      ...form,
+      nombreContacto: form.nombreContacto.trim(),
+      whatsapp: formatWhatsapp(form.whatsapp),
+      correo: form.correo.trim().toLowerCase(),
+      nombreEmprendimiento: form.nombreEmprendimiento.trim(),
+      rubro: form.rubro === "Otro" ? customRubro.trim() || "Otro" : form.rubro,
+      descripcion: form.descripcion.trim(),
+      direccion: form.direccion.trim(),
+      sector: form.sector.trim(),
+      comuna: form.comuna.trim(),
+      redesSociales: form.redesSociales.trim(),
+      notas: form.notas?.trim() ?? "",
+    });
+    setSubmitting(false);
+  };
+
+  return (
+    <section className="public-form-page">
+      <button className="secondary-button public-back-button" onClick={onHome}>Volver a la vitrina</button>
+      <header>
+        <p className="eyebrow">Formulario publico</p>
+        <h1>Ingresa tu emprendimiento</h1>
+        <p>Completa lo esencial. Las opciones rapidas ayudan a publicar mejor tu ficha.</p>
+      </header>
+
+      <section className="public-form-card">
+        <div className="public-form-step">
+          <span>1</span>
+          <strong>Datos de contacto</strong>
+        </div>
+        <div className="modal-grid">
+          <ModalField label="Tu nombre" error={touched ? errors.nombreContacto : undefined}>
+            <input value={form.nombreContacto} onChange={(event) => updateForm("nombreContacto", event.target.value)} />
+          </ModalField>
+          <ModalField label="WhatsApp" error={touched ? errors.whatsapp || errors.contacto : undefined}>
+            <input value={form.whatsapp} onChange={(event) => updateForm("whatsapp", event.target.value)} inputMode="tel" placeholder="+56 9 1234 5678" />
+          </ModalField>
+          <ModalField label="Correo" error={touched ? errors.correo || errors.contacto : undefined}>
+            <input value={form.correo} onChange={(event) => updateForm("correo", event.target.value)} inputMode="email" placeholder="correo@ejemplo.cl" />
+          </ModalField>
+        </div>
+      </section>
+
+      <section className="public-form-card">
+        <div className="public-form-step">
+          <span>2</span>
+          <strong>Emprendimiento</strong>
+        </div>
+        <div className="modal-grid">
+          <ModalField label="Nombre del emprendimiento" error={touched ? errors.nombreEmprendimiento : undefined}>
+            <input value={form.nombreEmprendimiento} onChange={(event) => updateForm("nombreEmprendimiento", event.target.value)} placeholder="Ej: Pan amasado de Maria" />
+          </ModalField>
+          <ModalField label="Comuna">
+            <input value={form.comuna} onChange={(event) => updateForm("comuna", event.target.value)} />
+          </ModalField>
+          <ModalField label="Sector">
+            <input value={form.sector} onChange={(event) => updateForm("sector", event.target.value)} placeholder="Villa, poblacion, rural, centro" />
+          </ModalField>
+          <ModalField label="Direccion o referencia">
+            <input value={form.direccion} onChange={(event) => updateForm("direccion", event.target.value)} placeholder="Opcional" />
+          </ModalField>
+        </div>
+
+        <div className="guided-field">
+          <span>Rubro</span>
+          <div className="option-grid">
+            {rubroSugerencias.map((rubro) => (
+              <button key={rubro} className={form.rubro === rubro ? "chip active" : "chip"} onClick={() => updateForm("rubro", rubro)}>
+                {rubro}
+              </button>
+            ))}
+          </div>
+          {form.rubro === "Otro" && (
+            <input className="guided-extra-input" value={customRubro} onChange={(event) => setCustomRubro(event.target.value)} placeholder="Escribe el rubro" />
+          )}
+          {touched && errors.rubro && <small className="field-error">{errors.rubro}</small>}
+        </div>
+
+        <ModalField label="Que vendes o que servicio ofreces">
+          <textarea value={form.descripcion} onChange={(event) => updateForm("descripcion", event.target.value)} rows={4} placeholder="Ej: pan amasado, tortas a pedido, tejidos, reparaciones..." />
+        </ModalField>
+      </section>
+
+      <section className="public-form-card">
+        <div className="public-form-step">
+          <span>3</span>
+          <strong>Como atiendes</strong>
+        </div>
+        <GuidedOptions label="Canales de venta" values={canalesVentaSugeridos} selected={form.canalesVenta} onToggle={(value) => toggleOption("canalesVenta", value)} />
+        <GuidedOptions label="Horarios" values={horariosSugeridos} selected={form.horarios} onToggle={(value) => toggleOption("horarios", value)} />
+        <GuidedOptions label="Que necesitas" values={necesidadesSugeridas} selected={form.necesidades} onToggle={(value) => toggleOption("necesidades", value)} />
+        <ModalField label="Redes sociales">
+          <input value={form.redesSociales} onChange={(event) => updateForm("redesSociales", event.target.value)} placeholder="@instagram, Facebook o enlace" />
+        </ModalField>
+      </section>
+
+      <section className="public-form-card">
+        <div className="public-form-step">
+          <span>4</span>
+          <strong>Fotos y nota final</strong>
+        </div>
+        <label className={form.fotos.length >= 3 ? "secondary-button disabled public-photo-button" : "secondary-button public-photo-button"}>
+          <ImagePlus size={16} /> Agregar fotos
+          <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={form.fotos.length >= 3} onChange={handleFotos} />
+        </label>
+        {fotoError && <small className="attachment-error">{fotoError}</small>}
+        <div className="public-photo-preview">
+          {form.fotos.map((foto) => (
+            <figure key={foto.id}>
+              <img src={foto.dataUrl} alt={foto.nombre} />
+              <button type="button" className="danger-icon-button" onClick={() => updateForm("fotos", form.fotos.filter((item) => item.id !== foto.id))} aria-label={`Quitar ${foto.nombre}`}>
+                <Trash2 size={15} />
+              </button>
+            </figure>
+          ))}
+        </div>
+        <ModalField label="Algo importante que debamos saber">
+          <textarea value={form.notas ?? ""} onChange={(event) => updateForm("notas", event.target.value)} rows={3} placeholder="Opcional" />
+        </ModalField>
+      </section>
+
+      {touched && hasErrors && <div className="modal-error">Revisa los campos marcados para enviar el formulario.</div>}
+      <button className="primary-button public-submit-button" onClick={submit} disabled={submitting}>
+        <Check size={18} /> {submitting ? "Enviando" : "Enviar emprendimiento"}
+      </button>
+    </section>
+  );
+}
+
+function GuidedOptions({
+  label,
+  values,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  values: readonly string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+}) {
+  return (
+    <div className="guided-field">
+      <span>{label}</span>
+      <div className="option-grid">
+        {values.map((value) => (
+          <button key={value} className={selected.includes(value) ? "chip active" : "chip"} onClick={() => onToggle(value)} type="button">
+            {value}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LoginGate({
   clientId,
   allowedEmails,
   error,
   onLogin,
+  onPublicHome,
 }: {
   clientId: string;
   allowedEmails: string[];
   error: string;
   onLogin: (user: AuthUser, credential: string) => Promise<void> | void;
+  onPublicHome: () => void;
 }) {
   const buttonRef = useRef<HTMLDivElement>(null);
   const [scriptReady, setScriptReady] = useState(false);
@@ -1629,6 +2124,9 @@ function LoginGate({
             <strong>Semilla Emprende</strong>
           </div>
         </div>
+        <button className="secondary-button login-back-button" onClick={onPublicHome}>
+          Volver a vitrina publica
+        </button>
         <p className="eyebrow">Acceso privado</p>
         <h1>Acceso Administración</h1>
         <p className="login-copy">
@@ -2420,24 +2918,30 @@ function EmprendimientosPanel({
   totalEmprendimientos,
   personas,
   personasPorId,
+  solicitudes,
+  solicitudesError,
   busqueda,
   onBusqueda,
   onNuevo,
   onEditar,
   onEliminar,
   onPersona,
+  onSolicitudEstado,
 }: {
   emprendimientos: Emprendimiento[];
   totalEmprendimientos: number;
   personas: Emprendedor[];
   personasPorId: Map<string, Emprendedor>;
   periodos: Periodo[];
+  solicitudes: SolicitudEmprendimiento[];
+  solicitudesError: string;
   busqueda: string;
   onBusqueda: (value: string) => void;
   onNuevo: () => void;
   onEditar: (emprendimiento: Emprendimiento) => void;
   onEliminar: (emprendimiento: Emprendimiento) => void;
   onPersona: (personaId: string) => void;
+  onSolicitudEstado: (id: string, estado: SolicitudEmprendimiento["estado"]) => void;
 }) {
   const activos = emprendimientos.filter((item) => item.estado === "activo").length;
 
@@ -2482,6 +2986,68 @@ function EmprendimientosPanel({
             </span>
           </section>
         )}
+      </div>
+
+      <SolicitudesEmprendimientoPanel
+        solicitudes={solicitudes}
+        error={solicitudesError}
+        onEstado={onSolicitudEstado}
+      />
+    </section>
+  );
+}
+
+function SolicitudesEmprendimientoPanel({
+  solicitudes,
+  error,
+  onEstado,
+}: {
+  solicitudes: SolicitudEmprendimiento[];
+  error: string;
+  onEstado: (id: string, estado: SolicitudEmprendimiento["estado"]) => void;
+}) {
+  return (
+    <section className="venture-requests">
+      <header>
+        <div>
+          <p className="eyebrow">Formulario publico</p>
+          <h2>Solicitudes recibidas</h2>
+        </div>
+        <span>{solicitudes.length}</span>
+      </header>
+      {error && <p className="config-note warning-note">{error}</p>}
+      <div className="venture-request-list">
+        {solicitudes.map((solicitud) => (
+          <article className={`venture-request-card ${solicitud.estado}`} key={solicitud.id}>
+            <header>
+              <div>
+                <strong>{solicitud.nombreEmprendimiento}</strong>
+                <span>{solicitud.nombreContacto} · {solicitud.rubro}</span>
+              </div>
+              <span className={`badge ${solicitud.estado}`}>{solicitud.estado}</span>
+            </header>
+            <p>{solicitud.descripcion || "Sin descripcion."}</p>
+            <div className="venture-request-meta">
+              {solicitud.whatsapp && <span><Phone size={14} /> {formatWhatsapp(solicitud.whatsapp)}</span>}
+              {solicitud.correo && <span><Mail size={14} /> {solicitud.correo}</span>}
+              {(solicitud.comuna || solicitud.sector) && <span><MapPin size={14} /> {[solicitud.comuna, solicitud.sector].filter(Boolean).join(" · ")}</span>}
+            </div>
+            <div className="venture-request-tags">
+              {[...solicitud.canalesVenta, ...solicitud.horarios, ...solicitud.necesidades].slice(0, 6).map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+            <footer>
+              <small>{formatDateTime(solicitud.createdAt)}</small>
+              <div>
+                <button className="secondary-button" onClick={() => onEstado(solicitud.id, "revisada")}>Revisada</button>
+                <button className="secondary-button" onClick={() => onEstado(solicitud.id, "convertida")}>Convertida</button>
+                <button className="danger-button" onClick={() => onEstado(solicitud.id, "descartada")}>Descartar</button>
+              </div>
+            </footer>
+          </article>
+        ))}
+        {!solicitudes.length && !error && <p className="empty-state">Aun no hay solicitudes recibidas desde el formulario publico.</p>}
       </div>
     </section>
   );
