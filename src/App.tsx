@@ -2045,6 +2045,24 @@ function PublicEmprendimientoForm({
     const base = idsPeriodo.size ? personas.filter((persona) => idsPeriodo.has(persona.id)) : personas;
     return base.filter((persona) => persona.estado === "activa");
   }, [cobros, periodo?.id, personas]);
+
+  useEffect(() => {
+    if (!rutConsultado || !personaValidada) return;
+    const personaActualizada =
+      personasDelPeriodo.find((persona) => persona.id === personaValidada.id) ??
+      personasDelPeriodo.find((persona) => cleanRut(persona.rut) === cleanRut(form.rut));
+    if (!personaActualizada) return;
+
+    setPersonaValidada(personaActualizada);
+    const whatsappRegistrado = formatWhatsapp(personaActualizada.whatsapp || personaActualizada.whatsappSecundario || "");
+    if (!whatsappRegistrado) return;
+
+    setForm((current) => {
+      if (current.whatsapp.trim()) return current;
+      return { ...current, whatsapp: whatsappRegistrado };
+    });
+  }, [form.rut, personaValidada, personasDelPeriodo, rutConsultado]);
+
   const contactoValido = Boolean(form.whatsapp.trim() || form.correo.trim());
   const errors = {
     rut: personaValidada ? "" : "Ingresa un RUT que este registrado en el periodo de pagos vigente.",
