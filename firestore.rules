@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "serbulboa@gmail.com"
+        ];
+    }
+
+    match /centros/semilla-emprende-negrete {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /solicitudesEmprendimientos/{solicitudId} {
+      allow create: if request.resource.data.origen == "formulario-publico"
+        && request.resource.data.estado == "nueva"
+        && request.resource.data.nombreEmprendimiento is string
+        && request.resource.data.nombreContacto is string
+        && request.resource.data.rut is string
+        && request.resource.data.fotos is list
+        && request.resource.data.fotos.size() <= 3;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

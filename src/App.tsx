@@ -90,9 +90,9 @@ const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 const APP_VERSION = "1.0.0";
 const SUPERADMIN_RESET_PASSWORD = "1q2w3e4r.,*";
-const MAX_COMPROBANTE_BYTES = 420 * 1024;
-const MAX_IMAGE_BYTES = 220 * 1024;
-const MAX_IMAGE_SIDE = 1280;
+const MAX_COMPROBANTE_BYTES = 220 * 1024;
+const MAX_IMAGE_BYTES = 120 * 1024;
+const MAX_IMAGE_SIDE = 960;
 const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
 const MAX_EMPRENDIMIENTO_FOTOS = 4;
 const ACCEPTED_FOTO_TYPES = "image/*";
@@ -438,7 +438,7 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   }
 
   if (file.size > MAX_COMPROBANTE_BYTES) {
-    throw new Error("El PDF supera 420 KB. Sube una version mas liviana o una captura.");
+    throw new Error(`El PDF supera ${formatFileSize(MAX_COMPROBANTE_BYTES)}. Sube una version mas liviana o una captura.`);
   }
 
   return {
@@ -2039,6 +2039,7 @@ function PublicEmprendimientoForm({
   const [personaValidada, setPersonaValidada] = useState<Emprendedor | null>(null);
   const [touched, setTouched] = useState(false);
   const [fotoError, setFotoError] = useState("");
+  const [fotoLoading, setFotoLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const personasDelPeriodo = useMemo(() => {
     const idsPeriodo = new Set(cobros.filter((cobro) => cobro.periodoId === periodo?.id).map((cobro) => cobro.emprendedorId));
@@ -2133,11 +2134,14 @@ function PublicEmprendimientoForm({
       return;
     }
     setFotoError("");
+    setFotoLoading(true);
     try {
       const fotos = await Promise.all(files.map(createEmprendimientoFoto));
       updateForm("fotos", [...form.fotos, ...fotos]);
     } catch (error) {
       setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
+    } finally {
+      setFotoLoading(false);
     }
   };
 
@@ -2297,10 +2301,12 @@ function PublicEmprendimientoForm({
           <span>5</span>
           <strong>Fotos y nota final</strong>
         </div>
-        <label className={form.fotos.length >= 3 ? "secondary-button disabled public-photo-button" : "secondary-button public-photo-button"}>
-          <ImagePlus size={16} /> Agregar fotos
-          <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={form.fotos.length >= 3} onChange={handleFotos} />
+        <label className={fotoLoading || form.fotos.length >= 3 ? "secondary-button disabled public-photo-button" : "secondary-button public-photo-button"}>
+          {fotoLoading ? <span className="inline-spinner" aria-hidden="true" /> : <ImagePlus size={16} />}
+          {fotoLoading ? "Redimensionando fotos" : "Agregar fotos"}
+          <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={fotoLoading || form.fotos.length >= 3} onChange={handleFotos} />
         </label>
+        {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en Firebase.</small>}
         {fotoError && <small className="attachment-error">{fotoError}</small>}
         <div className="public-photo-preview">
           {form.fotos.map((foto) => (
@@ -2600,13 +2606,14 @@ function ComprobanteAdjuntoInput({
           <span>
             {currentAdjunto
               ? `${formatFileSize(currentAdjunto.tamano)} · ${formatDateTime(currentAdjunto.createdAt)}`
-                : "Puedes subir imagen o PDF liviano."}
+              : `Imagen o PDF liviano. Maximo ${formatFileSize(MAX_COMPROBANTE_BYTES)}.`}
           </span>
         </div>
       </div>
       <div className="attachment-actions">
         <label className={loading ? "secondary-button disabled" : "secondary-button"}>
-          <Upload size={16} /> {loading ? "Procesando" : currentAdjunto ? "Cambiar" : "Subir"}
+          {loading ? <span className="inline-spinner" aria-hidden="true" /> : <Upload size={16} />}
+          {loading ? "Redimensionando" : currentAdjunto ? "Cambiar" : "Subir"}
           <input
             type="file"
             accept={ACCEPTED_COMPROBANTE_TYPES}
@@ -2614,6 +2621,7 @@ function ComprobanteAdjuntoInput({
             disabled={loading}
           />
         </label>
+        {loading && <small className="attachment-help">Preparando archivo optimizado para sincronizar en Firebase.</small>}
         {currentAdjunto && (
           <>
             <button type="button" className="secondary-button" onClick={() => {
@@ -3864,7 +3872,8 @@ function EmprendimientoModal({
               <strong>{form.fotos.length}/{MAX_EMPRENDIMIENTO_FOTOS} guardadas</strong>
             </div>
             <label className={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS ? "secondary-button disabled" : "secondary-button"}>
-              <ImagePlus size={16} /> {fotoLoading ? "Procesando" : "Agregar foto"}
+              {fotoLoading ? <span className="inline-spinner" aria-hidden="true" /> : <ImagePlus size={16} />}
+              {fotoLoading ? "Redimensionando" : "Agregar foto"}
               <input
                 type="file"
                 accept={ACCEPTED_FOTO_TYPES}
@@ -3874,6 +3883,7 @@ function EmprendimientoModal({
               />
             </label>
           </div>
+          {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en Firebase.</small>}
           {fotoError && <small className="attachment-error">{fotoError}</small>}
           <div className="venture-photo-list">
             {form.fotos.map((foto) => (

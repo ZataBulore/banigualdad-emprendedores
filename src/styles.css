@@ -3545,8 +3545,40 @@ label.secondary-button:hover,
   opacity: 0.58;
 }
 
+.inline-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  animation: spin 0.72s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .danger-button.compact {
   min-height: 34px;
+}
+
+.attachment-help,
+.attachment-error {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.attachment-help {
+  color: var(--muted);
+}
+
+.attachment-actions .attachment-help {
+  grid-column: 1 / -1;
 }
 
 .attachment-error {

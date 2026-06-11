@@ -109,11 +109,13 @@ const fieldLabels: Record<string, string> = {
 const normalizeAuditValue = (value: unknown): string => {
   if (value === undefined || value === null || value === "") return "sin dato";
   if (typeof value === "boolean") return value ? "si" : "no";
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "sin dato";
+  if (Array.isArray(value)) return value.length ? value.map(normalizeAuditValue).join(", ") : "sin dato";
   if (typeof value === "object") {
     const maybeAttachment = value as { nombre?: unknown; tamano?: unknown; dataUrl?: unknown };
     if (maybeAttachment.dataUrl && maybeAttachment.nombre) {
-      return `${String(maybeAttachment.nombre)} (${String(maybeAttachment.tamano ?? "sin tamano")} bytes)`;
+      const bytes = Number(maybeAttachment.tamano ?? 0);
+      const size = Number.isFinite(bytes) && bytes > 0 ? `${Math.round(bytes / 1024)} KB` : "sin tamano";
+      return `${String(maybeAttachment.nombre)} (${size})`;
     }
 
     return Object.entries(value as Record<string, unknown>)
@@ -570,7 +572,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       }, {
         tipo: "emprendimiento",
         accion: "Emprendimiento creado",
-        detalle: `${emprendimiento.nombre}. Rubro: ${emprendimiento.rubro || "sin rubro"}. Fotos: ${emprendimiento.fotos.length}.`,
+        detalle: `${emprendimiento.nombre}. Rubro: ${emprendimiento.rubro || "sin rubro"}. Fotos: ${normalizeAuditValue(emprendimiento.fotos)}.`,
         entidadId: id,
         personaId: persona?.id ?? payload.emprendedorId,
         personaNombre: persona?.nombre,
@@ -596,7 +598,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       }, {
         tipo: "emprendimiento",
         accion: "Emprendimiento actualizado",
-        detalle: describeChanges(emprendimiento, patch),
+        detalle: `${emprendimiento?.nombre ?? "Emprendimiento"}. ${describeChanges(emprendimiento, patch)}`,
         entidadId: id,
         personaId,
         personaNombre: persona?.nombre,

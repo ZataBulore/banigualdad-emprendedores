@@ -1,6 +1,6 @@
 import { FirebaseError, initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithCredential, signOut } from "firebase/auth";
-import { addDoc, collection, doc, getDoc, getDocs, getFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, getFirestore, initializeFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
 import type { SolicitudEmprendimiento, TesoreriaState } from "../types/tesoreria";
 
 const getEnvValue = (key: string) => String(import.meta.env[key] ?? "").trim();
@@ -29,12 +29,14 @@ export const FIREBASE_STATE_PATH = {
   document: import.meta.env.VITE_FIREBASE_DOCUMENT_ID || "semilla-emprende-negrete",
 };
 
+export const FIREBASE_DATABASE_ID = getEnvValue("VITE_FIREBASE_DATABASE_ID");
+
 export const FIREBASE_SOLICITUDES_COLLECTION =
   import.meta.env.VITE_FIREBASE_SOLICITUDES_COLLECTION || "solicitudesEmprendimientos";
 
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 export const firebaseAuth = app ? getAuth(app) : null;
-const firestore = app ? getFirestore(app) : null;
+const firestore = app ? (FIREBASE_DATABASE_ID ? initializeFirestore(app, {}, FIREBASE_DATABASE_ID) : getFirestore(app)) : null;
 
 const getStateRef = () => {
   if (!firestore) return null;
