@@ -150,8 +150,13 @@ const PUBLIC_FORM_HASH = "ingresa-tu-emprendimiento";
 
 const rubroSugerencias = [
   "Alimentos",
+  "Comida preparada",
+  "Pasteleria",
+  "Chocolates",
+  "Verduras",
   "Belleza y cuidado",
   "Ropa y accesorios",
+  "Joyas y bisuteria",
   "Artesania",
   "Servicios",
   "Comercio",
@@ -2080,7 +2085,7 @@ function PublicEmprendimientoForm({
       periodoValidadoId: periodo?.id ?? "",
       creditoOriginal: persona.creditoOriginal,
       nombreContacto: current.nombreContacto.trim() || persona.nombre,
-      whatsapp: current.whatsapp.trim() || persona.whatsapp || persona.whatsappSecundario || "",
+      whatsapp: formatWhatsapp(persona.whatsapp || persona.whatsappSecundario || current.whatsapp),
     }));
   };
 
@@ -2210,7 +2215,7 @@ function PublicEmprendimientoForm({
           <strong>Emprendimiento</strong>
         </div>
         <div className="modal-grid">
-          <ModalField label="Nombre del emprendimiento" error={touched ? errors.nombreEmprendimiento : undefined}>
+          <ModalField label="Nombre de emprendimiento o negocio" error={touched ? errors.nombreEmprendimiento : undefined}>
             <input value={form.nombreEmprendimiento} onChange={(event) => updateForm("nombreEmprendimiento", event.target.value)} placeholder="Ej: Pan amasado de Maria" />
           </ModalField>
           <ModalField label="Comuna">
@@ -3483,7 +3488,7 @@ function SolicitudRevisionModal({
       rut: persona ? formatRut(persona.rut) : current.rut,
       creditoOriginal: persona?.creditoOriginal ?? current.creditoOriginal,
       nombreContacto: current.nombreContacto || persona?.nombre || "",
-      whatsapp: current.whatsapp || persona?.whatsapp || persona?.whatsappSecundario || "",
+      whatsapp: formatWhatsapp(persona?.whatsapp || persona?.whatsappSecundario || current.whatsapp),
     }));
   };
 
@@ -3570,7 +3575,7 @@ function SolicitudRevisionModal({
         </div>
 
         <div className="modal-grid">
-          <ModalField label="Nombre emprendimiento" error={touched ? errors.nombreEmprendimiento : undefined}>
+          <ModalField label="Nombre de emprendimiento o negocio" error={touched ? errors.nombreEmprendimiento : undefined}>
             <input value={form.nombreEmprendimiento} onChange={(event) => updateForm("nombreEmprendimiento", event.target.value)} />
           </ModalField>
           <ModalField label="Rubro" error={touched ? errors.rubro : undefined}>
