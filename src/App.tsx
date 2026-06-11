@@ -63,6 +63,13 @@ type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">
 type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
+type GroupPaymentMessageKey = "amable" | "cercano" | "urgente" | "regularizar";
+type GeneratedGroupMessage = {
+  key: GroupPaymentMessageKey;
+  label: string;
+  text: string;
+  createdAt: string;
+};
 const ENV_AUTHORIZED_EMAILS = String(import.meta.env.VITE_AUTHORIZED_EMAILS ?? "")
   .split(/[,\n;]/)
   .map((email: string) => email.trim().toLowerCase())
@@ -601,9 +608,6 @@ const buildWhatsappUrl = (telefono: string, message: string) => {
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 };
 
-const buildWhatsappShareUrl = (message: string) =>
-  `https://wa.me/?text=${encodeURIComponent(message)}`;
-
 const getSecondaryContactName = (persona: Emprendedor) => (persona.nombreContactoSecundario ?? "").trim();
 
 const buildSecondaryAttendanceNote = (persona: Emprendedor) => {
@@ -679,26 +683,48 @@ const getPaymentDeadlineContext = (periodo?: Periodo) => {
   };
 };
 
+const getPendingAmount = (cobro: Pick<CobroSemanal, "totalEsperado" | "montoPagado">) =>
+  Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
+
+const formatPeopleList = (names: string[]) => {
+  if (!names.length) return "";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+};
+
 const buildGroupPaymentMessages = ({
   periodo,
+  paidCount,
+  totalCount,
   pendingCount,
   pendingAmount,
+  pendingNames,
+  regularizationLines,
 }: {
   periodo?: Periodo;
+  paidCount: number;
+  totalCount: number;
   pendingCount: number;
   pendingAmount: number;
+  pendingNames: string[];
+  regularizationLines: string[];
 }) => {
   const deadline = getPaymentDeadlineContext(periodo);
   const cuotaLabel = periodo ? `cuota ${periodo.numeroCuota}` : "cuota vigente";
+  const paidText = `${paidCount} de ${totalCount} persona${totalCount === 1 ? "" : "s"} ya ${paidCount === 1 ? "ha" : "han"} pagado`;
   const personasText = `${pendingCount} persona${pendingCount === 1 ? "" : "s"}`;
   const amountText = pendingAmount > 0 ? `, por un saldo total de ${formatCurrency(pendingAmount)}` : "";
+  const pendingNamesText = pendingNames.length ? ` Personas pendientes: ${formatPeopleList(pendingNames)}.` : "";
+  const regularizationText = regularizationLines.length
+    ? regularizationLines.join(" ")
+    : "No aparecen deudas pendientes para regularizar en este periodo.";
   const cierre = "Recordemos que este grupo es de apoyo solidario, respetuoso y responsable; avisar a tiempo ayuda a no entorpecer la gestion del centro.";
 
   return {
-    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. ${cierre}`,
-    cercano: `Hola grupo, aviso amable de organizacion: la ${cuotaLabel} esta cerca de cerrar y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El pago debe quedar listo hasta el sabado a las 16:00 hrs para mantener ordenada la gestion. ${deadline.daysText}. ${cierre}`,
-    urgente: `Hola grupo, recordatorio importante: hoy/cerca del cierre de la ${cuotaLabel} aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}. Les pedimos regularizar o avisar con respeto durante el dia para no atrasar la gestion. ${cierre}`,
-    atraso: `Hola grupo, necesitamos ponernos al dia con la ${cuotaLabel}: aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText} y ${deadline.daysText}. Por favor revisemos y coordinemos de forma solidaria para regularizar lo antes posible. ${cierre}`,
+    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} ${paidText} y faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. ${cierre}`,
+    cercano: `Hola grupo, aviso amable de organizacion: para la ${cuotaLabel} ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Les pido que podamos dejarlo ordenado a tiempo. ${cierre}`,
+    urgente: `Hola grupo, ultimo aviso de la ${cuotaLabel}: ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}.${pendingNamesText} Por favor, quienes faltan envien la cuota o el comprobante lo antes posible. Si ya regularizaron su tema, obvien este mensaje y avisen para actualizar el registro. Gracias.`,
+    regularizar: `Hola grupo, para regularizar pagos de la ${cuotaLabel}, este es el resumen de saldos pendientes considerando deuda atrasada mas la cuota actual: ${regularizationText} Si alguna situacion ya fue regularizada, por favor obvien este mensaje y envien el comprobante para actualizar el sistema. Gracias.`,
   };
 };
 
@@ -827,6 +853,7 @@ function App() {
   const [nuevoEmprendimientoAbierto, setNuevoEmprendimientoAbierto] = useState(false);
   const [cobroEditandoId, setCobroEditandoId] = useState<string | null>(null);
   const [pagoMultipleAbierto, setPagoMultipleAbierto] = useState(false);
+  const [mensajeCobroGrupo, setMensajeCobroGrupo] = useState<GeneratedGroupMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => subscribeAppDialogs(setDialogRequest), []);
@@ -1016,7 +1043,11 @@ function App() {
   const cobrosPeriodo = state.cobros.filter((cobro) => cobro.periodoId === periodo?.id);
   const totals = getPeriodoTotals(cobrosPeriodo);
   const cobrosPendientesGrupo = useMemo(
-    () => cobrosPeriodo.filter((cobro) => Math.max(cobro.totalEsperado - cobro.montoPagado, 0) > 0),
+    () => cobrosPeriodo.filter((cobro) => getPendingAmount(cobro) > 0),
+    [cobrosPeriodo],
+  );
+  const personasPagadasGrupo = useMemo(
+    () => new Set(cobrosPeriodo.filter((cobro) => getPendingAmount(cobro) <= 0).map((cobro) => cobro.emprendedorId)).size,
     [cobrosPeriodo],
   );
   const personasPendientesGrupo = useMemo(
@@ -1024,19 +1055,66 @@ function App() {
     [cobrosPendientesGrupo],
   );
   const saldoPendienteGrupo = useMemo(
-    () => cobrosPendientesGrupo.reduce((total, cobro) => total + Math.max(cobro.totalEsperado - cobro.montoPagado, 0), 0),
+    () => cobrosPendientesGrupo.reduce((total, cobro) => total + getPendingAmount(cobro), 0),
     [cobrosPendientesGrupo],
   );
+  const nombresPendientesGrupo = useMemo(
+    () => cobrosPendientesGrupo
+      .map((cobro) => personasPorId.get(cobro.emprendedorId)?.nombre ?? "")
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "es")),
+    [cobrosPendientesGrupo, personasPorId],
+  );
+  const regularizacionPendienteGrupo = useMemo(() => {
+    if (!periodo) return [];
+    const numeroCuotaActual = periodo.numeroCuota;
+
+    return cobrosPendientesGrupo
+      .map((cobroActual) => {
+        const persona = personasPorId.get(cobroActual.emprendedorId);
+        const cobrosPersonaHastaPeriodo = state.cobros.filter((cobro) => {
+          if (cobro.emprendedorId !== cobroActual.emprendedorId) return false;
+          const cobroPeriodo = state.periodos.find((item) => item.id === cobro.periodoId);
+          return Boolean(cobroPeriodo && cobroPeriodo.numeroCuota <= numeroCuotaActual);
+        });
+        const deudaActual = getPendingAmount(cobroActual);
+        const deudaAtrasada = cobrosPersonaHastaPeriodo
+          .filter((cobro) => cobro.id !== cobroActual.id)
+          .reduce((total, cobro) => total + getPendingAmount(cobro), 0);
+        const total = deudaAtrasada + deudaActual;
+
+        return {
+          nombre: persona?.nombre ?? "Persona sin nombre",
+          deudaAtrasada,
+          deudaActual,
+          total,
+        };
+      })
+      .filter((item) => item.total > 0)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+      .map((item) => {
+        const atrasoText = item.deudaAtrasada > 0 ? `deuda atrasada ${formatCurrency(item.deudaAtrasada)} + ` : "";
+        return `${item.nombre}: ${atrasoText}cuota actual ${formatCurrency(item.deudaActual)} = total ${formatCurrency(item.total)}.`;
+      });
+  }, [cobrosPendientesGrupo, periodo, personasPorId, state.cobros, state.periodos]);
   const mensajesCobroGrupo = useMemo(
     () => buildGroupPaymentMessages({
       periodo,
+      paidCount: personasPagadasGrupo,
+      totalCount: cobrosPeriodo.length,
       pendingCount: personasPendientesGrupo,
       pendingAmount: saldoPendienteGrupo,
+      pendingNames: nombresPendientesGrupo,
+      regularizationLines: regularizacionPendienteGrupo,
     }),
-    [periodo, personasPendientesGrupo, saldoPendienteGrupo],
+    [cobrosPeriodo.length, nombresPendientesGrupo, periodo, personasPagadasGrupo, personasPendientesGrupo, regularizacionPendienteGrupo, saldoPendienteGrupo],
   );
   const contextoVencimientoGrupo = useMemo(() => getPaymentDeadlineContext(periodo), [periodo]);
   const cesTotals = getPeriodoTotals(state.pagosCes);
+
+  useEffect(() => {
+    setMensajeCobroGrupo(null);
+  }, [periodo?.id]);
 
   const cobrosFiltrados = useMemo(() => {
     return cobrosPeriodo.filter((cobro) => {
@@ -1348,20 +1426,30 @@ function App() {
     recalcularPagosCes();
   };
 
-  const registrarMensajeCobroGrupo = (label: string, message: string) => {
+  const registrarMensajeCobroGrupo = (label: string, message: string, accion = "Mensaje grupal de cobro preparado") => {
     registrarMovimiento({
       tipo: "notificacion",
-      accion: `WhatsApp grupo cobros: ${label}`,
+      accion: `${accion}: ${label}`,
       detalle: `Se preparo mensaje grupal para la cuota ${periodo?.numeroCuota ?? "vigente"} con ${personasPendientesGrupo} pendiente${personasPendientesGrupo === 1 ? "" : "s"}. Mensaje: ${message}`,
       entidadId: periodo?.id,
     });
   };
 
+  const generarMensajeCobroGrupo = (key: GroupPaymentMessageKey, label: string, message: string) => {
+    setMensajeCobroGrupo({
+      key,
+      label,
+      text: message,
+      createdAt: new Date().toISOString(),
+    });
+    registrarMensajeCobroGrupo(label, message);
+  };
+
   const copiarMensajeCobroGrupo = async (label: string, message: string) => {
     try {
       await navigator.clipboard.writeText(message);
-      registrarMensajeCobroGrupo(`copiado - ${label}`, message);
-      await informarSistema("Mensaje grupal copiado. Puedes pegarlo en el grupo de WhatsApp.", {
+      registrarMensajeCobroGrupo(label, message, "Mensaje grupal de cobro copiado");
+      await informarSistema("Mensaje copiado. Ahora puedes pegarlo en el grupo de WhatsApp.", {
         tone: "success",
       });
     } catch {
@@ -1666,35 +1754,49 @@ function App() {
                 { key: "amable", label: "Amable", icon: <MessageCircle size={17} />, message: mensajesCobroGrupo.amable },
                 { key: "cercano", label: "Fecha cerca", icon: <CalendarDays size={17} />, message: mensajesCobroGrupo.cercano },
                 { key: "urgente", label: "Ultimo aviso", icon: <Send size={17} />, message: mensajesCobroGrupo.urgente },
-                { key: "atraso", label: "Regularizar", icon: <AlertTriangle size={17} />, message: mensajesCobroGrupo.atraso },
+                { key: "regularizar", label: "Regularizar", icon: <AlertTriangle size={17} />, message: mensajesCobroGrupo.regularizar },
               ].map((action) => (
-                <a
+                <button
                   key={action.key}
                   className={personasPendientesGrupo ? "secondary-button" : "secondary-button disabled"}
-                  href={personasPendientesGrupo ? buildWhatsappShareUrl(action.message) : undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-disabled={!personasPendientesGrupo}
-                  onClick={(event) => {
+                  type="button"
+                  disabled={!personasPendientesGrupo}
+                  onClick={() => {
                     if (!personasPendientesGrupo) {
-                      event.preventDefault();
                       return;
                     }
-                    registrarMensajeCobroGrupo(action.label, action.message);
+                    generarMensajeCobroGrupo(action.key as GroupPaymentMessageKey, action.label, action.message);
                   }}
                 >
                   {action.icon} {action.label}
-                </a>
+                </button>
               ))}
-              <button
-                className="secondary-button"
-                type="button"
-                disabled={!personasPendientesGrupo}
-                onClick={() => void copiarMensajeCobroGrupo("Amable", mensajesCobroGrupo.amable)}
-              >
-                <Clipboard size={17} /> Copiar texto
-              </button>
             </div>
+            {mensajeCobroGrupo && (
+              <section className="group-message-preview" aria-label="Mensaje generado para copiar">
+                <header>
+                  <div>
+                    <p className="eyebrow">Mensaje creado</p>
+                    <h3>{mensajeCobroGrupo.label}</h3>
+                  </div>
+                  <span>{formatDateTime(mensajeCobroGrupo.createdAt)}</span>
+                </header>
+                <textarea
+                  value={mensajeCobroGrupo.text}
+                  onChange={(event) => setMensajeCobroGrupo((current) => current ? { ...current, text: event.target.value } : current)}
+                  rows={7}
+                />
+                <footer>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={() => void copiarMensajeCobroGrupo(mensajeCobroGrupo.label, mensajeCobroGrupo.text)}
+                  >
+                    <Clipboard size={17} /> Copiar mensaje
+                  </button>
+                </footer>
+              </section>
+            )}
           </section>
 
           <div className="toolbar">

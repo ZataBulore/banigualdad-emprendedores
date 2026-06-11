@@ -1445,6 +1445,58 @@ label.secondary-button:hover,
   pointer-events: none;
 }
 
+.group-message-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.group-message-preview header,
+.group-message-preview footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.group-message-preview h3 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.group-message-preview header span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.group-message-preview textarea {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.group-message-preview textarea:focus {
+  border-color: var(--section-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--section-accent) 14%, transparent);
+}
+
+.group-message-preview footer {
+  justify-content: flex-end;
+}
+
 .multi-pay-button {
   width: 100%;
 }
@@ -4785,7 +4837,11 @@ label.secondary-button:hover,
 
   .group-message-actions {
     grid-column: 1 / -1;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .group-message-preview {
+    grid-column: 1 / -1;
   }
 
   .modal-field:last-child {
