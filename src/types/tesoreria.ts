@@ -18,8 +18,42 @@ export interface ConfiguracionCes {
   montosPorCredito: Record<string, number>;
 }
 
+export interface ReglaRenovacionAusencia {
+  ausenciasNoJustificadas: number;
+  consecuencia: string;
+}
+
+export interface ConfiguracionMicrocredito {
+  interesMensualPorcentaje: number;
+  semanasDevolucion: number[];
+  montoPrimerCicloMin: number;
+  montoPrimerCicloMax: number;
+  cesDescripcion: string;
+  cesMontoReferencia: number;
+  ahorroObligatorioNombre: string;
+  ahorroObligatorioSemanal: number;
+  ahorroObligatorioDevolucion: string;
+  avalSolidario: string;
+  microseguroOpcional: boolean;
+  microseguroSemanal: number;
+  microseguroDescripcion: string;
+  requisitosCentro: string[];
+  normasInternas: string[];
+  reglasRenovacionAusencias: ReglaRenovacionAusencia[];
+  atrasosPagoSemanalBloqueoRenovacion: number;
+  cajaSosMaximaParaRenovar: number;
+  directiva: {
+    presidenta: string;
+    tesorera: string;
+    secretaria: string;
+  };
+  lugarReunion: string;
+  pilaresFundacion: string[];
+}
+
 export interface ConfiguracionSistema {
   ces: ConfiguracionCes;
+  microcredito: ConfiguracionMicrocredito;
   seguridad: ConfiguracionSeguridad;
 }
 

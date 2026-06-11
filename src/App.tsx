@@ -49,12 +49,12 @@ import {
   subscribeSolicitudesEmprendimiento,
   updateSolicitudEmprendimiento,
 } from "./services/firebase";
-import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
 type Tab = "cobros" | "ces" | "personas" | "emprendimientos" | "asistencias" | "config";
-type ConfigTab = "general" | "seguridad" | "historial" | "respaldo";
+type ConfigTab = "general" | "microcredito" | "seguridad" | "historial" | "respaldo";
 type PublicRoute = "home" | "form" | "admin";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
@@ -700,6 +700,7 @@ function App() {
     eliminarEmprendimiento,
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
+    updateConfiguracionMicrocredito,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
@@ -1765,6 +1766,7 @@ function App() {
           onPersona={updateEmprendedor}
           onCes={updateConfiguracionCes}
           onSeguridad={updateConfiguracionSeguridad}
+          onMicrocredito={updateConfiguracionMicrocredito}
           onRecalcularCes={handleRecalcularCes}
           busqueda={busqueda}
           onBusqueda={setBusqueda}
@@ -4193,6 +4195,7 @@ function ConfigPanel({
   onPersona,
   onCes,
   onSeguridad,
+  onMicrocredito,
   onRecalcularCes,
   busqueda,
   onBusqueda,
@@ -4212,6 +4215,7 @@ function ConfigPanel({
   onPersona: (id: string, patch: Partial<Emprendedor>) => void;
   onCes: (patch: Partial<ConfiguracionCes>) => void;
   onSeguridad: (patch: Partial<ConfiguracionSeguridad>) => void;
+  onMicrocredito: (patch: Partial<ConfiguracionMicrocredito>) => void;
   onRecalcularCes: () => void;
   busqueda: string;
   onBusqueda: (value: string) => void;
@@ -4226,14 +4230,19 @@ function ConfigPanel({
 }) {
   const [configTab, setConfigTab] = useState<ConfigTab>("general");
   const [emailsModalOpen, setEmailsModalOpen] = useState(false);
+  const [microcreditoModalOpen, setMicrocreditoModalOpen] = useState(false);
   const cesRules = state.configuracion.ces.montosPorCredito;
   const authorizedEmails = state.configuracion.seguridad.correosAutorizados;
+  const microcredito = state.configuracion.microcredito;
 
   return (
     <section className="workspace config-panel">
       <div className="config-tabs" role="tablist" aria-label="Apartados de configuracion">
         <button className={configTab === "general" ? "active" : ""} onClick={() => setConfigTab("general")}>
           <SlidersHorizontal size={17} /> General
+        </button>
+        <button className={configTab === "microcredito" ? "active" : ""} onClick={() => setConfigTab("microcredito")}>
+          <ReceiptText size={17} /> Microcredito
         </button>
         <button className={configTab === "seguridad" ? "active" : ""} onClick={() => setConfigTab("seguridad")}>
           <ShieldCheck size={17} /> Seguridad
@@ -4314,6 +4323,76 @@ function ConfigPanel({
 
       {configTab === "historial" && (
         <HistorialPanel movimientos={state.historial ?? []} />
+      )}
+
+      {configTab === "microcredito" && (
+        <section className="config-section microcredit-section">
+          <header>
+            <div>
+              <p className="eyebrow">Reglas operativas</p>
+              <h2>Microcredito del centro</h2>
+            </div>
+            <button className="primary-button" onClick={() => setMicrocreditoModalOpen(true)}>
+              <Pencil size={18} /> Editar reglas
+            </button>
+          </header>
+
+          <div className="microcredit-summary-grid">
+            <RuleSummaryCard label="Interes mensual" value={`${microcredito.interesMensualPorcentaje}%`} />
+            <RuleSummaryCard label="Semanas" value={microcredito.semanasDevolucion.join(", ")} />
+            <RuleSummaryCard label="Primer ciclo" value={`${formatCurrency(microcredito.montoPrimerCicloMin)} - ${formatCurrency(microcredito.montoPrimerCicloMax)}`} />
+            <RuleSummaryCard label={microcredito.ahorroObligatorioNombre} value={`${formatCurrency(microcredito.ahorroObligatorioSemanal)} semanal`} />
+            <RuleSummaryCard label="Microseguro" value={`${microcredito.microseguroOpcional ? "Opcional" : "Obligatorio"} · ${formatCurrency(microcredito.microseguroSemanal)} semanal`} />
+            <RuleSummaryCard label="Bloqueo renovacion" value={`${microcredito.atrasosPagoSemanalBloqueoRenovacion} atrasos semanales`} />
+          </div>
+
+          <div className="microcredit-detail-grid">
+            <InfoList title="Requisitos" items={microcredito.requisitosCentro} />
+            <InfoList title="Normas internas" items={microcredito.normasInternas} />
+            <InfoList title="Pilares" items={microcredito.pilaresFundacion} />
+            <section className="rule-list-card">
+              <h3>Renovacion</h3>
+              <ul>
+                {microcredito.reglasRenovacionAusencias.map((regla) => (
+                  <li key={`${regla.ausenciasNoJustificadas}-${regla.consecuencia}`}>
+                    <strong>{regla.ausenciasNoJustificadas} ausencia{regla.ausenciasNoJustificadas === 1 ? "" : "s"}</strong>
+                    <span>{regla.consecuencia}</span>
+                  </li>
+                ))}
+                <li>
+                  <strong>Caja SOS</strong>
+                  <span>Maximo {microcredito.cajaSosMaximaParaRenovar} vez para renovar.</span>
+                </li>
+              </ul>
+            </section>
+            <section className="rule-list-card">
+              <h3>Directiva y reunion</h3>
+              <dl>
+                <div><dt>Presidenta</dt><dd>{microcredito.directiva.presidenta || "Sin dato"}</dd></div>
+                <div><dt>Tesorera</dt><dd>{microcredito.directiva.tesorera || "Sin dato"}</dd></div>
+                <div><dt>Secretaria</dt><dd>{microcredito.directiva.secretaria || "Sin dato"}</dd></div>
+                <div><dt>Lugar</dt><dd>{microcredito.lugarReunion || "Sin dato"}</dd></div>
+              </dl>
+            </section>
+            <section className="rule-list-card wide">
+              <h3>Aval solidario</h3>
+              <p>{microcredito.avalSolidario}</p>
+            </section>
+          </div>
+
+          <p className="config-note">Los montos CES y seguro mostrados aqui son referencia del cuestionario. Los calculos contables siguen usando las hojas y reglas CES configuradas en el sistema.</p>
+
+          {microcreditoModalOpen && (
+            <MicrocreditoModal
+              config={microcredito}
+              onClose={() => setMicrocreditoModalOpen(false)}
+              onSave={(patch) => {
+                onMicrocredito(patch);
+                setMicrocreditoModalOpen(false);
+              }}
+            />
+          )}
+        </section>
       )}
 
       {configTab === "general" && (
@@ -4467,6 +4546,259 @@ function ConfigPanel({
         </>
       )}
     </section>
+  );
+}
+
+const splitLines = (value: string) =>
+  value
+    .split(/\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const parseNumberList = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[,\n;]/)
+        .map((item) => Number(item.trim()))
+        .filter((item) => Number.isFinite(item) && item > 0),
+    ),
+  ).sort((a, b) => a - b);
+
+const serializeRenovacionRules = (rules: ConfiguracionMicrocredito["reglasRenovacionAusencias"]) =>
+  rules.map((rule) => `${rule.ausenciasNoJustificadas}: ${rule.consecuencia}`).join("\n");
+
+const parseRenovacionRules = (value: string) =>
+  splitLines(value)
+    .map((line) => {
+      const [count, ...rest] = line.split(":");
+      const ausenciasNoJustificadas = Number(count.trim());
+      const consecuencia = rest.join(":").trim();
+
+      if (!Number.isFinite(ausenciasNoJustificadas) || ausenciasNoJustificadas <= 0 || !consecuencia) return null;
+      return { ausenciasNoJustificadas, consecuencia };
+    })
+    .filter((item): item is ConfiguracionMicrocredito["reglasRenovacionAusencias"][number] => Boolean(item))
+    .sort((a, b) => a.ausenciasNoJustificadas - b.ausenciasNoJustificadas);
+
+function RuleSummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rule-summary-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
+
+function InfoList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="rule-list-card">
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function MicrocreditoModal({
+  config,
+  onClose,
+  onSave,
+}: {
+  config: ConfiguracionMicrocredito;
+  onClose: () => void;
+  onSave: (patch: Partial<ConfiguracionMicrocredito>) => void;
+}) {
+  const [form, setForm] = useState({
+    interesMensualPorcentaje: String(config.interesMensualPorcentaje),
+    semanasDevolucion: config.semanasDevolucion.join(", "),
+    montoPrimerCicloMin: String(config.montoPrimerCicloMin),
+    montoPrimerCicloMax: String(config.montoPrimerCicloMax),
+    cesDescripcion: config.cesDescripcion,
+    cesMontoReferencia: String(config.cesMontoReferencia),
+    ahorroObligatorioNombre: config.ahorroObligatorioNombre,
+    ahorroObligatorioSemanal: String(config.ahorroObligatorioSemanal),
+    ahorroObligatorioDevolucion: config.ahorroObligatorioDevolucion,
+    avalSolidario: config.avalSolidario,
+    microseguroOpcional: config.microseguroOpcional,
+    microseguroSemanal: String(config.microseguroSemanal),
+    microseguroDescripcion: config.microseguroDescripcion,
+    requisitosCentro: config.requisitosCentro.join("\n"),
+    normasInternas: config.normasInternas.join("\n"),
+    reglasRenovacionAusencias: serializeRenovacionRules(config.reglasRenovacionAusencias),
+    atrasosPagoSemanalBloqueoRenovacion: String(config.atrasosPagoSemanalBloqueoRenovacion),
+    cajaSosMaximaParaRenovar: String(config.cajaSosMaximaParaRenovar),
+    presidenta: config.directiva.presidenta,
+    tesorera: config.directiva.tesorera,
+    secretaria: config.directiva.secretaria,
+    lugarReunion: config.lugarReunion,
+    pilaresFundacion: config.pilaresFundacion.join("\n"),
+  });
+  const [touched, setTouched] = useState(false);
+
+  const semanas = parseNumberList(form.semanasDevolucion);
+  const reglasRenovacion = parseRenovacionRules(form.reglasRenovacionAusencias);
+  const errors = {
+    interesMensualPorcentaje: Number(form.interesMensualPorcentaje) < 0 ? "El interes no puede ser negativo." : "",
+    semanasDevolucion: semanas.length ? "" : "Ingresa al menos una duracion.",
+    montoPrimerCicloMin:
+      Number(form.montoPrimerCicloMin) <= 0 || Number(form.montoPrimerCicloMin) > Number(form.montoPrimerCicloMax)
+        ? "El minimo debe ser mayor a cero y no superar el maximo."
+        : "",
+    reglasRenovacionAusencias: reglasRenovacion.length ? "" : "Usa el formato 3: Puede aumentar y renovar.",
+  };
+  const hasErrors = Object.values(errors).some(Boolean);
+
+  const updateForm = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const save = async () => {
+    setTouched(true);
+    if (hasErrors) return;
+
+    const confirmed = await confirmarAccionCritica("Guardar cambios en las reglas de microcredito? Esta accion quedara registrada en auditoria y se sincronizara con Firebase.", {
+      title: "Semilla Emprende Negrete confirma",
+      tone: "warning",
+      confirmLabel: "Guardar reglas",
+    });
+    if (!confirmed) return;
+
+    onSave({
+      interesMensualPorcentaje: Number(form.interesMensualPorcentaje || 0),
+      semanasDevolucion: semanas,
+      montoPrimerCicloMin: Number(form.montoPrimerCicloMin || 0),
+      montoPrimerCicloMax: Number(form.montoPrimerCicloMax || 0),
+      cesDescripcion: form.cesDescripcion.trim(),
+      cesMontoReferencia: Number(form.cesMontoReferencia || 0),
+      ahorroObligatorioNombre: form.ahorroObligatorioNombre.trim(),
+      ahorroObligatorioSemanal: Number(form.ahorroObligatorioSemanal || 0),
+      ahorroObligatorioDevolucion: form.ahorroObligatorioDevolucion.trim(),
+      avalSolidario: form.avalSolidario.trim(),
+      microseguroOpcional: form.microseguroOpcional,
+      microseguroSemanal: Number(form.microseguroSemanal || 0),
+      microseguroDescripcion: form.microseguroDescripcion.trim(),
+      requisitosCentro: splitLines(form.requisitosCentro),
+      normasInternas: splitLines(form.normasInternas),
+      reglasRenovacionAusencias: reglasRenovacion,
+      atrasosPagoSemanalBloqueoRenovacion: Number(form.atrasosPagoSemanalBloqueoRenovacion || 0),
+      cajaSosMaximaParaRenovar: Number(form.cajaSosMaximaParaRenovar || 0),
+      directiva: {
+        presidenta: form.presidenta.trim(),
+        tesorera: form.tesorera.trim(),
+        secretaria: form.secretaria.trim(),
+      },
+      lugarReunion: form.lugarReunion.trim(),
+      pilaresFundacion: splitLines(form.pilaresFundacion),
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="edit-modal microcredit-modal" role="dialog" aria-modal="true" aria-labelledby="microcredit-title">
+        <header>
+          <div>
+            <p className="eyebrow">Reglas operativas</p>
+            <h2 id="microcredit-title">Editar microcredito</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar reglas de microcredito">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="modal-grid">
+          <ModalField label="Interes mensual (%)" error={touched ? errors.interesMensualPorcentaje : undefined}>
+            <input type="number" min="0" step="0.1" value={form.interesMensualPorcentaje} onChange={(event) => updateForm("interesMensualPorcentaje", event.target.value)} />
+          </ModalField>
+          <ModalField label="Semanas de devolucion" error={touched ? errors.semanasDevolucion : undefined} hint="Separadas por coma. Ej: 14, 17, 20">
+            <input value={form.semanasDevolucion} onChange={(event) => updateForm("semanasDevolucion", event.target.value)} />
+          </ModalField>
+          <ModalField label="Monto minimo primer ciclo" error={touched ? errors.montoPrimerCicloMin : undefined}>
+            <input type="number" min="0" value={form.montoPrimerCicloMin} onChange={(event) => updateForm("montoPrimerCicloMin", event.target.value)} />
+          </ModalField>
+          <ModalField label="Monto maximo primer ciclo">
+            <input type="number" min="0" value={form.montoPrimerCicloMax} onChange={(event) => updateForm("montoPrimerCicloMax", event.target.value)} />
+          </ModalField>
+          <ModalField label="Descripcion CES">
+            <textarea value={form.cesDescripcion} onChange={(event) => updateForm("cesDescripcion", event.target.value)} rows={3} />
+          </ModalField>
+          <ModalField label="Monto referencia CES">
+            <input type="number" min="0" value={form.cesMontoReferencia} onChange={(event) => updateForm("cesMontoReferencia", event.target.value)} />
+          </ModalField>
+          <ModalField label="Nombre ahorro obligatorio">
+            <input value={form.ahorroObligatorioNombre} onChange={(event) => updateForm("ahorroObligatorioNombre", event.target.value)} />
+          </ModalField>
+          <ModalField label="Ahorro semanal">
+            <input type="number" min="0" value={form.ahorroObligatorioSemanal} onChange={(event) => updateForm("ahorroObligatorioSemanal", event.target.value)} />
+          </ModalField>
+          <ModalField label="Devolucion ahorro">
+            <textarea value={form.ahorroObligatorioDevolucion} onChange={(event) => updateForm("ahorroObligatorioDevolucion", event.target.value)} rows={3} />
+          </ModalField>
+          <ModalField label="Aval solidario">
+            <textarea value={form.avalSolidario} onChange={(event) => updateForm("avalSolidario", event.target.value)} rows={3} />
+          </ModalField>
+          <label className="modal-field checkbox-field">
+            <span>Microseguro opcional</span>
+            <input type="checkbox" checked={form.microseguroOpcional} onChange={(event) => updateForm("microseguroOpcional", event.target.checked)} />
+          </label>
+          <ModalField label="Microseguro semanal">
+            <input type="number" min="0" value={form.microseguroSemanal} onChange={(event) => updateForm("microseguroSemanal", event.target.value)} />
+          </ModalField>
+          <ModalField label="Descripcion microseguro">
+            <textarea value={form.microseguroDescripcion} onChange={(event) => updateForm("microseguroDescripcion", event.target.value)} rows={3} />
+          </ModalField>
+          <ModalField label="Requisitos del centro">
+            <textarea value={form.requisitosCentro} onChange={(event) => updateForm("requisitosCentro", event.target.value)} rows={8} />
+          </ModalField>
+          <ModalField label="Normas internas">
+            <textarea value={form.normasInternas} onChange={(event) => updateForm("normasInternas", event.target.value)} rows={5} />
+          </ModalField>
+          <ModalField label="Reglas renovacion por ausencias" error={touched ? errors.reglasRenovacionAusencias : undefined} hint="Una por linea. Ej: 3: Puede aumentar y renovar.">
+            <textarea value={form.reglasRenovacionAusencias} onChange={(event) => updateForm("reglasRenovacionAusencias", event.target.value)} rows={5} />
+          </ModalField>
+          <ModalField label="Atrasos que bloquean renovacion">
+            <input type="number" min="0" value={form.atrasosPagoSemanalBloqueoRenovacion} onChange={(event) => updateForm("atrasosPagoSemanalBloqueoRenovacion", event.target.value)} />
+          </ModalField>
+          <ModalField label="Maximo Caja SOS para renovar">
+            <input type="number" min="0" value={form.cajaSosMaximaParaRenovar} onChange={(event) => updateForm("cajaSosMaximaParaRenovar", event.target.value)} />
+          </ModalField>
+          <ModalField label="Presidenta">
+            <input value={form.presidenta} onChange={(event) => updateForm("presidenta", event.target.value)} />
+          </ModalField>
+          <ModalField label="Tesorera">
+            <input value={form.tesorera} onChange={(event) => updateForm("tesorera", event.target.value)} />
+          </ModalField>
+          <ModalField label="Secretaria">
+            <input value={form.secretaria} onChange={(event) => updateForm("secretaria", event.target.value)} />
+          </ModalField>
+          <ModalField label="Lugar reunion">
+            <input value={form.lugarReunion} onChange={(event) => updateForm("lugarReunion", event.target.value)} />
+          </ModalField>
+          <ModalField label="Pilares fundacion">
+            <textarea value={form.pilaresFundacion} onChange={(event) => updateForm("pilaresFundacion", event.target.value)} rows={3} />
+          </ModalField>
+        </div>
+
+        <div className="modal-info">
+          <ReceiptText size={18} />
+          <span>Este cambio guarda informacion operativa del centro. No recalcula las cuotas ni reemplaza los montos oficiales cargados desde las hojas.</span>
+        </div>
+
+        <footer>
+          <button className="secondary-button" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="primary-button" onClick={() => void save()}>
+            <Check size={18} /> Guardar reglas
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 

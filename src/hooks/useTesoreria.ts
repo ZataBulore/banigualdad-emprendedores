@@ -12,6 +12,7 @@ import type {
   CobroSemanal,
   ComprobanteAdjunto,
   ConfiguracionCes,
+  ConfiguracionMicrocredito,
   ConfiguracionSeguridad,
   Emprendimiento,
   Emprendedor,
@@ -104,6 +105,28 @@ const fieldLabels: Record<string, string> = {
   correosAutorizados: "correos autorizados",
   fechaVencimientoCes: "vencimiento CES",
   montosPorCredito: "montos por credito",
+  microcredito: "reglas de microcredito",
+  interesMensualPorcentaje: "interes mensual",
+  semanasDevolucion: "semanas de devolucion",
+  montoPrimerCicloMin: "monto minimo primer ciclo",
+  montoPrimerCicloMax: "monto maximo primer ciclo",
+  cesDescripcion: "descripcion CES",
+  cesMontoReferencia: "monto referencia CES",
+  ahorroObligatorioNombre: "nombre ahorro obligatorio",
+  ahorroObligatorioSemanal: "ahorro obligatorio semanal",
+  ahorroObligatorioDevolucion: "devolucion ahorro obligatorio",
+  avalSolidario: "aval solidario",
+  microseguroOpcional: "microseguro opcional",
+  microseguroSemanal: "microseguro semanal",
+  microseguroDescripcion: "descripcion microseguro",
+  requisitosCentro: "requisitos del centro",
+  normasInternas: "normas internas",
+  reglasRenovacionAusencias: "reglas de renovacion por ausencias",
+  atrasosPagoSemanalBloqueoRenovacion: "atrasos que bloquean renovacion",
+  cajaSosMaximaParaRenovar: "maximo Caja SOS para renovar",
+  directiva: "directiva",
+  lugarReunion: "lugar de reunion",
+  pilaresFundacion: "pilares de la fundacion",
 };
 
 const normalizeAuditValue = (value: unknown): string => {
@@ -235,6 +258,30 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
         ...configuracionInicial.ces.montosPorCredito,
         ...(state.configuracion?.ces?.montosPorCredito ?? {}),
       },
+    },
+    microcredito: {
+      ...configuracionInicial.microcredito,
+      ...(state.configuracion?.microcredito ?? {}),
+      directiva: {
+        ...configuracionInicial.microcredito.directiva,
+        ...(state.configuracion?.microcredito?.directiva ?? {}),
+      },
+      requisitosCentro:
+        state.configuracion?.microcredito?.requisitosCentro?.length
+          ? state.configuracion.microcredito.requisitosCentro
+          : configuracionInicial.microcredito.requisitosCentro,
+      normasInternas:
+        state.configuracion?.microcredito?.normasInternas?.length
+          ? state.configuracion.microcredito.normasInternas
+          : configuracionInicial.microcredito.normasInternas,
+      reglasRenovacionAusencias:
+        state.configuracion?.microcredito?.reglasRenovacionAusencias?.length
+          ? state.configuracion.microcredito.reglasRenovacionAusencias
+          : configuracionInicial.microcredito.reglasRenovacionAusencias,
+      pilaresFundacion:
+        state.configuracion?.microcredito?.pilaresFundacion?.length
+          ? state.configuracion.microcredito.pilaresFundacion
+          : configuracionInicial.microcredito.pilaresFundacion,
     },
     seguridad: {
       ...configuracionInicial.seguridad,
@@ -708,6 +755,32 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     );
   };
 
+  const updateConfiguracionMicrocredito = (patch: Partial<ConfiguracionMicrocredito>) => {
+    setState((current) => {
+      const microcredito = {
+        ...current.configuracion.microcredito,
+        ...patch,
+        directiva: {
+          ...current.configuracion.microcredito.directiva,
+          ...(patch.directiva ?? {}),
+        },
+      };
+
+      return withMovimiento({
+        ...current,
+        configuracion: {
+          ...current.configuracion,
+          microcredito,
+        },
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "configuracion",
+        accion: "Reglas de microcredito actualizadas",
+        detalle: describeChanges(current.configuracion.microcredito, patch),
+      }, options.updatedBy);
+    });
+  };
+
   const recalcularPagosCes = () => {
     setState((current) =>
       withMovimiento({
@@ -1069,6 +1142,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     eliminarEmprendimiento,
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
+    updateConfiguracionMicrocredito,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,

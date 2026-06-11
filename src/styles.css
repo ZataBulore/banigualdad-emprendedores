@@ -2683,6 +2683,120 @@ label.secondary-button:hover,
   font-weight: 600;
 }
 
+.microcredit-section header {
+  align-items: center;
+}
+
+.microcredit-summary-grid,
+.microcredit-detail-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.microcredit-summary-grid {
+  grid-template-columns: 1fr;
+}
+
+.microcredit-detail-grid {
+  margin-top: 10px;
+}
+
+.rule-summary-card,
+.rule-list-card {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.rule-summary-card {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px;
+}
+
+.rule-summary-card span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.rule-summary-card strong {
+  color: var(--text);
+  font-size: 0.94rem;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.rule-list-card {
+  padding: 10px;
+}
+
+.rule-list-card h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.rule-list-card ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rule-list-card li {
+  display: grid;
+  gap: 2px;
+  border-radius: 7px;
+  background: var(--surface);
+  padding: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.rule-list-card li strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.rule-list-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.rule-list-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.rule-list-card dl div {
+  border-radius: 7px;
+  background: var(--surface);
+  padding: 8px;
+}
+
+.rule-list-card dt {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.rule-list-card dd {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
 .people-config-list {
   display: grid;
   gap: 8px;
@@ -3314,6 +3428,24 @@ label.secondary-button:hover,
 
 .security-modal {
   max-width: 560px;
+}
+
+.microcredit-modal {
+  max-width: 860px;
+}
+
+.checkbox-field {
+  align-content: start;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.checkbox-field input[type="checkbox"] {
+  width: 22px;
+  min-height: 22px;
+  accent-color: var(--section-accent);
 }
 
 .security-lock-panel {
@@ -4366,7 +4498,19 @@ label.secondary-button:hover,
   }
 
   .config-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .microcredit-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .microcredit-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rule-list-card.wide {
+    grid-column: 1 / -1;
   }
 
   .audit-toolbar {
