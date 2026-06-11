@@ -1658,6 +1658,15 @@ function App() {
               persona={personaVisible}
               state={state}
               onEditarPersona={(persona) => setPersonaEditando(persona)}
+              onRegistrarNotificacion={({ persona, contacto, accion }) => {
+                registrarMovimiento({
+                  tipo: "notificacion",
+                  accion: `WhatsApp ${accion.label}`,
+                  detalle: `Se preparo mensaje "${accion.label}" para ${persona.nombre} al contacto ${contacto.label} (${formatWhatsapp(contacto.value)}).`,
+                  personaId: persona.id,
+                  personaNombre: persona.nombre,
+                });
+              }}
             />
           </div>
         </section>
@@ -2894,10 +2903,16 @@ function PersonaPanel({
   persona,
   state,
   onEditarPersona,
+  onRegistrarNotificacion,
 }: {
   persona?: Emprendedor;
   state: TesoreriaState;
   onEditarPersona: (persona: Emprendedor) => void;
+  onRegistrarNotificacion: (input: {
+    persona: Emprendedor;
+    contacto: { key: string; label: string; value: string };
+    accion: { key: string; label: string; message: string };
+  }) => void;
 }) {
   if (!persona) {
     return (
@@ -2991,6 +3006,7 @@ function PersonaPanel({
                   href={buildWhatsappUrl(contacto.value, action.message)}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={() => onRegistrarNotificacion({ persona, contacto, accion: action })}
                 >
                   {action.icon} {action.label} - {contacto.label}
                 </a>

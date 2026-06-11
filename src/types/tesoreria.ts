@@ -188,6 +188,7 @@ export type TipoMovimiento =
   | "emprendimiento"
   | "asistencia"
   | "reunion"
+  | "notificacion"
   | "configuracion"
   | "respaldo";
 
