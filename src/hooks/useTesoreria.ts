@@ -420,6 +420,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     isFirebaseConfigured ? "connecting" : "local",
   );
   const [cloudError, setCloudError] = useState("");
+  const [cloudReady, setCloudReady] = useState(!isFirebaseConfigured);
   const applyingRemoteRef = useRef(false);
   const remoteReadyRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
@@ -436,6 +437,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     if (!isFirebaseConfigured) {
       setCloudStatus("local");
       setCloudError(`Faltan variables Firebase: ${getFirebaseMissingConfig().join(", ")}.`);
+      setCloudReady(true);
       remoteReadyRef.current = false;
       return;
     }
@@ -443,6 +445,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     if (!options.syncEnabled && options.publicReadEnabled) {
       setCloudStatus("connecting");
       setCloudError("");
+      setCloudReady(false);
       readRemoteState()
         .then((remoteState) => {
           if (remoteState) {
@@ -450,10 +453,12 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
             setState(migrateState(remoteState));
           }
           setCloudStatus("local");
+          setCloudReady(true);
         })
         .catch((error) => {
           setCloudStatus("error");
           setCloudError(error instanceof Error ? error.message : "No se pudo leer la vitrina desde Firebase.");
+          setCloudReady(true);
         });
       remoteReadyRef.current = false;
       return;
@@ -462,6 +467,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     if (!options.syncEnabled) {
       setCloudStatus("connecting");
       setCloudError("Inicia sesion con Google para activar la sincronizacion con Firebase.");
+      setCloudReady(false);
       remoteReadyRef.current = false;
       return;
     }
@@ -469,6 +475,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     let cancelled = false;
     setCloudStatus("connecting");
     setCloudError("");
+    setCloudReady(false);
 
     readRemoteState()
       .then(async (remoteState) => {
@@ -481,12 +488,14 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         }
         if (cancelled) return;
         remoteReadyRef.current = true;
+        setCloudReady(true);
         setCloudStatus("synced");
       })
       .catch((error) => {
         if (cancelled) return;
         setCloudStatus("error");
         setCloudError(getErrorMessage(error, "No se pudo conectar con Firebase."));
+        setCloudReady(false);
       });
 
     const unsubscribe = subscribeRemoteState(
@@ -494,6 +503,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         if (!remoteReadyRef.current || !remoteState) return;
         applyingRemoteRef.current = true;
         setState(migrateState(remoteState));
+        setCloudReady(true);
         setCloudStatus("synced");
       },
       (message) => {
@@ -1189,6 +1199,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     state,
     cloudStatus,
     cloudError,
+    cloudReady,
     personasPorId,
     updateCentro,
     updatePeriodo,

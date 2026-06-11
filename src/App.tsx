@@ -778,6 +778,7 @@ function App() {
     state,
     cloudStatus,
     cloudError,
+    cloudReady,
     personasPorId,
     updateCentro,
     updatePeriodo,
@@ -1530,6 +1531,10 @@ function App() {
         onPublicHome={goPublicHome}
       />
     );
+  }
+
+  if (!cloudReady && cloudStatus !== "error") {
+    return <AuthCheckingGate onPublicHome={goPublicHome} />;
   }
 
   return (
