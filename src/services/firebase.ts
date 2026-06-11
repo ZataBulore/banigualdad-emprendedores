@@ -29,7 +29,7 @@ export const FIREBASE_STATE_PATH = {
   document: import.meta.env.VITE_FIREBASE_DOCUMENT_ID || "semilla-emprende-negrete",
 };
 
-export const FIREBASE_DATABASE_ID = getEnvValue("VITE_FIREBASE_DATABASE_ID");
+export const FIREBASE_DATABASE_ID = getEnvValue("VITE_FIREBASE_DATABASE_ID") || "default";
 
 export const FIREBASE_SOLICITUDES_COLLECTION =
   import.meta.env.VITE_FIREBASE_SOLICITUDES_COLLECTION || "solicitudesEmprendimientos";
