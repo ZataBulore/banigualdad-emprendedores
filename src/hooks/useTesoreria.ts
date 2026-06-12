@@ -33,8 +33,16 @@ export type CloudSyncStatus = "local" | "connecting" | "synced" | "saving" | "er
 
 const SYNC_RETRY_DELAYS = [1200, 2500, 5000, 9000, 15000];
 
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
+const getErrorMessage = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : fallback;
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("resource-exhausted") || normalized.includes("quota limit exceeded")) {
+    return "Firebase rechazo el guardado porque se agoto la cuota diaria gratuita de escrituras de Firestore. El cambio quedo guardado en este equipo y se podra sincronizar cuando la cuota se restablezca o se habilite billing en Firebase.";
+  }
+
+  return message;
+};
 
 const isTransientFirebaseMessage = (message: string) =>
   [

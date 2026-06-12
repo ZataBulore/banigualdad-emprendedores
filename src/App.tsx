@@ -1745,6 +1745,12 @@ function App() {
           <strong>{cloudStatus === "saving" ? "Guardando cambios en Firebase" : "Reconectando con Firebase"}</strong>
         </div>
       )}
+      {cloudStatus === "error" && cloudError && (
+        <div className="sync-error-banner" role="alert">
+          <CloudOff size={17} />
+          <span>{cloudError}</span>
+        </div>
+      )}
 
       {tab === "cobros" && (
         <section className="workspace">

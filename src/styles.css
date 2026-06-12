@@ -990,6 +990,25 @@ label.secondary-button:hover,
   white-space: nowrap;
 }
 
+.sync-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid rgba(255, 59, 48, 0.24);
+  border-radius: 8px;
+  background: #fff1ef;
+  color: #9f241c;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  font-weight: 760;
+  line-height: 1.35;
+}
+
+.sync-error-banner svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
 .section-cobros {
   --section-accent: #007aff;
   --section-soft: #e8f2ff;
