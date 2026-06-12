@@ -200,7 +200,7 @@ const normalizeComprobantesAdjuntos = (
   comprobanteAdjunto?: ComprobanteAdjunto | null,
   comprobantesAdjuntos?: ComprobanteAdjunto[],
 ) => {
-  const merged = [...(comprobantesAdjuntos ?? [])];
+  const merged = comprobantesAdjuntos !== undefined ? [...comprobantesAdjuntos] : [];
   if (comprobanteAdjunto && !merged.some((item) => item.createdAt === comprobanteAdjunto.createdAt && item.nombre === comprobanteAdjunto.nombre)) {
     merged.unshift(comprobanteAdjunto);
   }
@@ -226,10 +226,12 @@ const normalizePaymentPatch = <T extends { comprobanteAdjunto?: ComprobanteAdjun
 ): Partial<T> => {
   if (!("comprobanteAdjunto" in patch) && !("comprobantesAdjuntos" in patch)) return patch;
 
-  const comprobantesAdjuntos = normalizeComprobantesAdjuntos(
-    patch.comprobanteAdjunto === undefined ? current?.comprobanteAdjunto : patch.comprobanteAdjunto,
-    patch.comprobantesAdjuntos ?? current?.comprobantesAdjuntos,
-  );
+  const comprobantesAdjuntos = "comprobantesAdjuntos" in patch
+    ? normalizeComprobantesAdjuntos(undefined, patch.comprobantesAdjuntos ?? [])
+    : normalizeComprobantesAdjuntos(
+        patch.comprobanteAdjunto === undefined ? current?.comprobanteAdjunto : patch.comprobanteAdjunto,
+        current?.comprobantesAdjuntos,
+      );
 
   return {
     ...patch,

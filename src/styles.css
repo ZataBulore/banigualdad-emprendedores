@@ -3924,7 +3924,7 @@ label.secondary-button:hover,
 
 .attachment-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   border: 1px solid rgba(52, 199, 89, 0.24);
@@ -3932,10 +3932,6 @@ label.secondary-button:hover,
   background: #f0fbf3;
   color: #248a3d;
   padding: 8px;
-}
-
-.attachment-card.empty {
-  grid-template-columns: auto 1fr;
 }
 
 .attachment-card.empty {
@@ -3965,8 +3961,15 @@ label.secondary-button:hover,
   font-weight: 700;
 }
 
-.attachment-card .secondary-button,
-.attachment-card .danger-button {
+.attachment-card-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.attachment-card-actions .secondary-button,
+.attachment-card-actions .danger-button {
   min-height: 30px;
   padding-inline: 8px;
   font-size: 0.72rem;

@@ -280,13 +280,16 @@ const getComprobantesAdjuntos = (
   comprobanteAdjunto?: ComprobanteAdjunto | null,
   comprobantesAdjuntos?: ComprobanteAdjunto[],
 ) => {
-  const merged = [...(comprobantesAdjuntos ?? [])];
+  const merged = comprobantesAdjuntos !== undefined ? [...comprobantesAdjuntos] : [];
   if (comprobanteAdjunto && !merged.some((item) => item.nombre === comprobanteAdjunto.nombre && item.createdAt === comprobanteAdjunto.createdAt)) {
     merged.unshift(comprobanteAdjunto);
   }
 
   return merged.slice(0, 2);
 };
+
+const getComprobanteKey = (adjunto: ComprobanteAdjunto) =>
+  [adjunto.createdAt, adjunto.nombre, adjunto.tamano, adjunto.tipo].join("|");
 
 const validarComprobanteTransferencia = async (
   metodoPago: MetodoPago,
@@ -2936,29 +2939,32 @@ function ComprobanteAdjuntoInput({
       confirmLabel: "Quitar",
     });
     if (!confirmed) return;
-    setPreviewAdjunto((current) => (current?.createdAt === adjunto.createdAt && current.nombre === adjunto.nombre ? null : current));
-    onChange(currentAdjuntos.filter((item) => item.createdAt !== adjunto.createdAt || item.nombre !== adjunto.nombre));
+    const key = getComprobanteKey(adjunto);
+    setPreviewAdjunto((current) => (current && getComprobanteKey(current) === key ? null : current));
+    onChange(currentAdjuntos.filter((item) => getComprobanteKey(item) !== key));
   };
 
   return (
     <div className="attachment-control">
       <div className="attachment-stack">
         {currentAdjuntos.map((adjunto, index) => (
-          <div className="attachment-card" key={`${adjunto.createdAt}-${adjunto.nombre}`}>
+          <div className="attachment-card" key={getComprobanteKey(adjunto)}>
             <FileImage size={17} />
             <div>
               <strong>{index + 1}. {adjunto.nombre}</strong>
               <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
             </div>
-            <button type="button" className="secondary-button compact" onClick={() => {
-              setZoom(1);
-              setPreviewAdjunto(adjunto);
-            }}>
-              <Eye size={16} /> Ver
-            </button>
-            <button type="button" className="danger-button compact" onClick={() => void handleRemove(adjunto)}>
-              <Trash2 size={16} /> Quitar
-            </button>
+            <div className="attachment-card-actions">
+              <button type="button" className="secondary-button compact" onClick={() => {
+                setZoom(1);
+                setPreviewAdjunto(adjunto);
+              }}>
+                <Eye size={16} /> Ver
+              </button>
+              <button type="button" className="danger-button compact" onClick={() => void handleRemove(adjunto)}>
+                <Trash2 size={16} /> Quitar
+              </button>
+            </div>
           </div>
         ))}
         {!currentAdjuntos.length && (
