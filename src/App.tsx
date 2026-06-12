@@ -1765,6 +1765,7 @@ function App() {
             <span className="auth-avatar">
               {authUser.foto ? <img src={authUser.foto} alt="" /> : <ShieldCheck size={18} />}
             </span>
+            <NegreteWeatherPill />
             <span className="auth-user">
               <strong>{authUser.nombre || "Cuenta Google"}</strong>
             </span>
@@ -1802,8 +1803,6 @@ function App() {
           </div>
         </section>
       )}
-
-      <NegreteWeatherWidget compact />
 
       <section className="summary-grid">
         <SummaryCard icon={<CircleDollarSign />} label="Esperado" value={formatCurrency(totals.esperado)} />
@@ -2447,9 +2446,10 @@ const getWeatherIcon = (weather?: NegreteWeather) => {
   return weather.isDay ? <CloudSun size={21} /> : <Cloud size={21} />;
 };
 
-function NegreteWeatherWidget({ compact = false }: { compact?: boolean }) {
+function NegreteWeatherPill() {
   const [weather, setWeather] = useState<NegreteWeather | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2486,39 +2486,79 @@ function NegreteWeatherWidget({ compact = false }: { compact?: boolean }) {
   }, []);
 
   const updatedAtLabel = weather?.updatedAt ? formatDateTime(weather.updatedAt) : "";
+  const temperatureLabel = status === "ready" && weather
+    ? formatWeatherNumber(weather.temperature, "°")
+    : status === "loading" ? "..." : "--°";
+  const description = weather ? getWeatherDescription(weather.code) : "Clima de Negrete";
 
   return (
-    <section className={compact ? "weather-widget compact" : "weather-widget"} aria-label="Clima de Negrete">
-      <div className="weather-main">
-        <span className="weather-icon">{getWeatherIcon(weather ?? undefined)}</span>
-        <div>
-          <p className="eyebrow">Clima en Negrete</p>
-          <h2>
-            {status === "ready" && weather
-              ? `${formatWeatherNumber(weather.temperature, "°C")} · ${getWeatherDescription(weather.code)}`
-              : status === "loading" ? "Actualizando clima..." : "Clima no disponible"}
-          </h2>
-          <span>
-            {status === "ready" && weather
-              ? `Sensacion ${formatWeatherNumber(weather.apparent, "°C")} · Max ${formatWeatherNumber(weather.max, "°")} / Min ${formatWeatherNumber(weather.min, "°")}`
-              : "Fuente gratuita Open-Meteo para la zona de Negrete."}
-          </span>
-        </div>
-      </div>
+    <>
+      <button
+        className="weather-pill"
+        type="button"
+        onClick={() => setDetailsOpen(true)}
+        aria-label={`Ver detalle del clima de Negrete: ${temperatureLabel}`}
+        title="Clima de Negrete"
+      >
+        {getWeatherIcon(weather ?? undefined)}
+        <strong>{temperatureLabel}</strong>
+      </button>
 
-      {status === "ready" && weather && (
-        <div className="weather-metrics">
-          <span><Droplets size={15} /> Humedad {formatWeatherNumber(weather.humidity, "%")}</span>
-          <span><CloudRain size={15} /> Lluvia {formatWeatherNumber(weather.rainChance, "%")}</span>
-          <span><Wind size={15} /> Viento {formatWeatherNumber(weather.wind, " km/h")}</span>
-          <span><Thermometer size={15} /> Ahora {formatWeatherNumber(weather.temperature, "°C")}</span>
+      {detailsOpen && (
+        <div className="weather-modal-backdrop" role="presentation" onClick={() => setDetailsOpen(false)}>
+          <section
+            className="weather-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalle del clima de Negrete"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div className="weather-modal-title">
+                <span>{getWeatherIcon(weather ?? undefined)}</span>
+                <div>
+                  <p className="eyebrow">Clima en Negrete</p>
+                  <h2>
+                    {status === "ready" && weather
+                      ? `${formatWeatherNumber(weather.temperature, "°C")} · ${description}`
+                      : status === "loading" ? "Actualizando clima..." : "Clima no disponible"}
+                  </h2>
+                </div>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setDetailsOpen(false)} aria-label="Cerrar clima">
+                <X size={17} />
+              </button>
+            </header>
+
+            {status === "ready" && weather ? (
+              <>
+                <div className="weather-modal-summary">
+                  <strong>{formatWeatherNumber(weather.temperature, "°C")}</strong>
+                  <span>Sensacion {formatWeatherNumber(weather.apparent, "°C")}</span>
+                  <span>Max {formatWeatherNumber(weather.max, "°")} / Min {formatWeatherNumber(weather.min, "°")}</span>
+                </div>
+                <div className="weather-modal-grid">
+                  <span><Droplets size={16} /> Humedad <strong>{formatWeatherNumber(weather.humidity, "%")}</strong></span>
+                  <span><CloudRain size={16} /> Lluvia <strong>{formatWeatherNumber(weather.rainChance, "%")}</strong></span>
+                  <span><Wind size={16} /> Viento <strong>{formatWeatherNumber(weather.wind, " km/h")}</strong></span>
+                  <span><Thermometer size={16} /> Precipitacion <strong>{formatWeatherNumber(weather.precipitation, " mm")}</strong></span>
+                </div>
+              </>
+            ) : (
+              <p className="weather-modal-note">
+                {status === "loading"
+                  ? "Estamos consultando la fuente gratuita de clima para la zona."
+                  : "No se pudo cargar el clima en este momento. Intenta nuevamente en unos minutos."}
+              </p>
+            )}
+
+            <footer>
+              <small>{status === "ready" && updatedAtLabel ? `Actualizado ${updatedAtLabel} · Datos: Open-Meteo.` : "Datos: Open-Meteo."}</small>
+            </footer>
+          </section>
         </div>
       )}
-
-      <small>
-        {status === "ready" && updatedAtLabel ? `Actualizado ${updatedAtLabel} · Datos: Open-Meteo.` : "Datos: Open-Meteo."}
-      </small>
-    </section>
+    </>
   );
 }
 
@@ -2698,6 +2738,7 @@ function PublicHome({
           <strong>Semilla Emprende Negrete</strong>
         </button>
         <nav>
+          <NegreteWeatherPill />
           <button className="secondary-button" onClick={onOpenForm}>Ingresa tu emprendimiento</button>
           <button className="primary-button" onClick={onLogin}>Login</button>
         </nav>
@@ -2739,8 +2780,6 @@ function PublicHome({
               <span><Store size={16} /> Productos, servicios y oficios locales</span>
             </div>
           </section>
-
-          <NegreteWeatherWidget />
 
           <PublicNewsCarousel />
 
