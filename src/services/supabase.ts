@@ -41,9 +41,7 @@ const sanitizeForSupabase = <T>(value: T): T =>
 
 const compactAttachment = (attachment: unknown) => {
   if (!attachment || typeof attachment !== "object") return attachment;
-  const candidate = attachment as { url?: unknown; dataUrl?: unknown };
-  if (!candidate.url) return attachment;
-  const { dataUrl: _dataUrl, ...rest } = candidate;
+  const { dataUrl: _dataUrl, ...rest } = attachment as { dataUrl?: unknown };
   return rest;
 };
 
