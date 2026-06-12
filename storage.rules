@@ -1,0 +1,48 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "serbulboa@gmail.com",
+          "noneknowmyname@gmail.com",
+          "jbetanzo74@gmail.com"
+        ];
+    }
+
+    function isSmallImage() {
+      return request.resource != null
+        && request.resource.size <= 512 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    function isSmallReceipt() {
+      return request.resource != null
+        && request.resource.size <= 512 * 1024
+        && (
+          request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf'
+        );
+    }
+
+    match /emprendimientos/{month}/{fileName} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isSmallImage();
+    }
+
+    match /solicitudes/{month}/{fileName} {
+      allow read: if true;
+      allow create: if isSmallImage();
+      allow update, delete: if isAdmin();
+    }
+
+    match /comprobantes/{month}/{fileName} {
+      allow read, create, update, delete: if isAdmin() && isSmallReceipt();
+    }
+
+    match /reuniones/{month}/{fileName} {
+      allow read, create, update, delete: if isAdmin() && isSmallImage();
+    }
+  }
+}

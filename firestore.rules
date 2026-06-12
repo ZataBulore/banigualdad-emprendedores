@@ -26,5 +26,16 @@ service cloud.firestore {
         && request.resource.data.fotos.size() <= 3;
       allow read, update, delete: if isAdmin();
     }
+
+    match /archivos/{archivoId} {
+      allow read: if resource.data.folder in ["emprendimientos", "solicitudes"] || isAdmin();
+      allow create: if request.resource.data.folder == "solicitudes"
+        && request.resource.data.dataUrl is string
+        && request.resource.data.dataUrl.size() <= 750000;
+      allow create, update: if isAdmin()
+        && request.resource.data.dataUrl is string
+        && request.resource.data.dataUrl.size() <= 750000;
+      allow delete: if isAdmin();
+    }
   }
 }

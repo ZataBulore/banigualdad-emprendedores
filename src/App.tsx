@@ -55,6 +55,7 @@ import {
   signInFirebaseWithGoogle,
   signOutFirebase,
   subscribeFirebaseAuthState,
+  uploadFirebaseAsset,
 } from "./services/firebase";
 import { createSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
 import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, CuentaTransferencia, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
@@ -407,6 +408,11 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const dataUrlToBlob = async (dataUrl: string) => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
 const withUploadTimeout = async <T,>(operation: Promise<T>, timeoutMs = 20000): Promise<T> => {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -425,9 +431,10 @@ const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
 
 const getAttachmentProviderLabel = (adjunto: ComprobanteAdjunto) => {
   if (adjunto.url && adjunto.storageProvider === "firebase") return "Firebase Storage";
+  if (adjunto.storagePath && adjunto.storageProvider === "firebase") return "Guardado en Firebase Storage";
   if (adjunto.dataUrl) return "Disponible en este equipo";
   if (adjunto.url) return "Enlace externo";
-  if (adjunto.storageProvider === "firebase") return "Referencia en Firebase";
+  if (adjunto.storageProvider === "firebase") return "Guardado en Firebase";
   return "Archivo no sincronizado";
 };
 
@@ -483,14 +490,20 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   if (isImageFile(file)) {
     const image = await compressImageFile(file);
     const createdAt = new Date().toISOString();
+    const uploaded = await uploadFirebaseAsset(
+      "comprobantes",
+      await dataUrlToBlob(image.dataUrl),
+      image.tipo,
+      image.nombre,
+    );
 
     return {
       nombre: image.nombre,
       tipo: image.tipo,
       tamano: image.tamano,
       createdAt,
-      dataUrl: image.dataUrl,
-      storageProvider: "local" as const,
+      ...uploaded,
+      storageProvider: "firebase" as const,
     };
   }
 
@@ -503,6 +516,7 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   }
 
   const dataUrl = await readFileAsDataUrl(file);
+  const uploaded = await uploadFirebaseAsset("comprobantes", file, file.type, file.name);
 
   return {
     nombre: file.name,
@@ -510,16 +524,26 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
     tamano: file.size,
     createdAt: new Date().toISOString(),
     dataUrl,
-    storageProvider: "local" as const,
+    ...uploaded,
+    storageProvider: "firebase" as const,
   };
 };
 
-const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto> => {
+const createEmprendimientoFoto = async (
+  file: File,
+  folder: "emprendimientos" | "solicitudes" = "emprendimientos",
+): Promise<EmprendimientoFoto> => {
   if (!isImageFile(file)) {
     throw new Error("Solo se aceptan imagenes para la central de emprendimientos.");
   }
 
   const image = await compressImageFile(file);
+  const uploaded = await uploadFirebaseAsset(
+    folder,
+    await dataUrlToBlob(image.dataUrl),
+    image.tipo,
+    image.nombre,
+  );
 
   return {
     id: `foto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -527,7 +551,7 @@ const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto>
     tipo: image.tipo,
     tamano: image.tamano,
     createdAt: new Date().toISOString(),
-    dataUrl: image.dataUrl,
+    ...uploaded,
     storageProvider: "firebase" as const,
   };
 };
@@ -538,6 +562,12 @@ const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
   }
 
   const image = await compressImageFile(file);
+  const uploaded = await uploadFirebaseAsset(
+    "reuniones",
+    await dataUrlToBlob(image.dataUrl),
+    image.tipo,
+    image.nombre,
+  );
 
   return {
     id: `minuta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -545,7 +575,7 @@ const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
     tipo: image.tipo,
     tamano: image.tamano,
     createdAt: new Date().toISOString(),
-    dataUrl: image.dataUrl,
+    ...uploaded,
     storageProvider: "firebase" as const,
   };
 };
@@ -3040,7 +3070,7 @@ function PublicEmprendimientoForm({
     setFotoError("");
     setFotoLoading(true);
     try {
-      const fotos = await Promise.all(files.map(createEmprendimientoFoto));
+      const fotos = await Promise.all(files.map((file) => createEmprendimientoFoto(file, "solicitudes")));
       updateForm("fotos", [...form.fotos, ...fotos]);
     } catch (error) {
       setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
@@ -4776,7 +4806,7 @@ function EmprendimientoModal({
     setFotoError("");
     setFotoLoading(true);
     try {
-      const fotos = await Promise.all(files.map(createEmprendimientoFoto));
+      const fotos = await Promise.all(files.map((file) => createEmprendimientoFoto(file)));
       updateForm("fotos", [...form.fotos, ...fotos]);
     } catch (error) {
       setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
