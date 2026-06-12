@@ -15,6 +15,7 @@ import type {
   ConfiguracionCes,
   ConfiguracionMicrocredito,
   ConfiguracionSeguridad,
+  CuentaTransferencia,
   Emprendimiento,
   Emprendedor,
   EstadoAsistencia,
@@ -159,6 +160,12 @@ const fieldLabels: Record<string, string> = {
   directiva: "directiva",
   lugarReunion: "lugar de reunion",
   pilaresFundacion: "pilares de la fundacion",
+  cuentaTransferencia: "cuenta de transferencia",
+  titular: "titular",
+  banco: "banco",
+  tipoCuenta: "tipo de cuenta",
+  numeroCuenta: "numero de cuenta",
+  nota: "nota",
 };
 
 const normalizeAuditValue = (value: unknown): string => {
@@ -365,6 +372,10 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       ...(state.configuracion?.seguridad ?? {}),
       correosAutorizados,
       correosBaseSincronizados: correosBaseKey,
+    },
+    cuentaTransferencia: {
+      ...configuracionInicial.cuentaTransferencia,
+      ...(state.configuracion?.cuentaTransferencia ?? {}),
     },
   };
 
@@ -911,6 +922,28 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     });
   };
 
+  const updateCuentaTransferencia = (patch: Partial<CuentaTransferencia>) => {
+    setState((current) => {
+      const cuentaTransferencia = {
+        ...current.configuracion.cuentaTransferencia,
+        ...patch,
+      };
+
+      return withMovimiento({
+        ...current,
+        configuracion: {
+          ...current.configuracion,
+          cuentaTransferencia,
+        },
+        updatedAt: new Date().toISOString(),
+      }, {
+        tipo: "configuracion",
+        accion: "Cuenta de transferencia actualizada",
+        detalle: describeChanges(current.configuracion.cuentaTransferencia, patch),
+      }, options.updatedBy);
+    });
+  };
+
   const recalcularPagosCes = () => {
     setState((current) =>
       withMovimiento({
@@ -1275,6 +1308,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
     updateConfiguracionMicrocredito,
+    updateCuentaTransferencia,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,

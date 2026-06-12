@@ -51,10 +51,21 @@ export interface ConfiguracionMicrocredito {
   pilaresFundacion: string[];
 }
 
+export interface CuentaTransferencia {
+  titular: string;
+  rut: string;
+  banco: string;
+  tipoCuenta: string;
+  numeroCuenta: string;
+  correo: string;
+  nota: string;
+}
+
 export interface ConfiguracionSistema {
   ces: ConfiguracionCes;
   microcredito: ConfiguracionMicrocredito;
   seguridad: ConfiguracionSeguridad;
+  cuentaTransferencia: CuentaTransferencia;
 }
 
 export interface ConfiguracionSeguridad {

@@ -1565,6 +1565,77 @@ label.secondary-button:hover,
   gap: 8px;
 }
 
+.transfer-account-card {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  border-radius: 8px;
+  background: #f7fff9;
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.transfer-account-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transfer-account-head > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #e6f8eb;
+  color: #148044;
+}
+
+.transfer-account-head h2 {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.transfer-account-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.transfer-account-card dl div {
+  min-width: 0;
+  border: 1px solid rgba(20, 128, 68, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.transfer-account-card dt {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.transfer-account-card dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 820;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-account-card .primary-button {
+  width: 100%;
+}
+
 .group-collection-panel {
   display: grid;
   gap: 10px;
@@ -2861,6 +2932,10 @@ label.secondary-button:hover,
 }
 
 .audit-section header > svg {
+  color: var(--section-accent);
+}
+
+.transfer-config-section header > svg {
   color: var(--section-accent);
 }
 

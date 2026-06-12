@@ -53,7 +53,7 @@ import {
 } from "./services/firebase";
 import { isSupabaseConfigured, uploadSupabaseAsset, uploadSupabaseComprobante } from "./services/supabase";
 import { createSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
-import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
+import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, CuentaTransferencia, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
 
@@ -66,7 +66,7 @@ type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">
 type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "comprobantesAdjuntos" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
-type GroupPaymentMessageKey = "amable" | "cercano" | "urgente" | "regularizar";
+type GroupPaymentMessageKey = "amable" | "cercano" | "urgente" | "regularizar" | "transferencia";
 type GeneratedGroupMessage = {
   key: GroupPaymentMessageKey;
   label: string;
@@ -755,6 +755,22 @@ const formatPeopleList = (names: string[]) => {
   return `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
 };
 
+const formatTransferAccountLines = (cuenta: CuentaTransferencia) =>
+  [
+    cuenta.titular.trim() ? `Titular: ${cuenta.titular.trim()}` : "",
+    cuenta.rut.trim() ? `RUT: ${cuenta.rut.trim()}` : "",
+    cuenta.banco.trim() ? `Banco: ${cuenta.banco.trim()}` : "",
+    cuenta.tipoCuenta.trim() ? `Tipo de cuenta: ${cuenta.tipoCuenta.trim()}` : "",
+    cuenta.numeroCuenta.trim() ? `N° cuenta: ${cuenta.numeroCuenta.trim()}` : "",
+    cuenta.correo.trim() ? `Correo: ${cuenta.correo.trim()}` : "",
+    cuenta.nota.trim() ? `Nota: ${cuenta.nota.trim()}` : "",
+  ].filter(Boolean);
+
+const formatTransferAccountText = (cuenta: CuentaTransferencia) => {
+  const lines = formatTransferAccountLines(cuenta);
+  return lines.length ? lines.join("\n") : "Cuenta de transferencia aun no configurada.";
+};
+
 const buildGroupPaymentMessages = ({
   periodo,
   paidCount,
@@ -763,6 +779,7 @@ const buildGroupPaymentMessages = ({
   pendingAmount,
   pendingNames,
   regularizationLines,
+  cuentaTransferencia,
 }: {
   periodo?: Periodo;
   paidCount: number;
@@ -771,6 +788,7 @@ const buildGroupPaymentMessages = ({
   pendingAmount: number;
   pendingNames: string[];
   regularizationLines: string[];
+  cuentaTransferencia: CuentaTransferencia;
 }) => {
   const deadline = getPaymentDeadlineContext(periodo);
   const cuotaLabel = periodo ? `cuota ${periodo.numeroCuota}` : "cuota vigente";
@@ -781,13 +799,15 @@ const buildGroupPaymentMessages = ({
   const regularizationText = regularizationLines.length
     ? regularizationLines.join(" ")
     : "No aparecen deudas pendientes para regularizar en este periodo.";
+  const transferText = formatTransferAccountText(cuentaTransferencia);
   const cierre = "Recordemos que este grupo es de apoyo solidario, respetuoso y responsable; avisar a tiempo ayuda a no entorpecer la gestion del centro.";
 
   return {
-    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} ${paidText} y faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. ${cierre}`,
-    cercano: `Hola grupo, aviso amable de organizacion: para la ${cuotaLabel} ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Les pido que podamos dejarlo ordenado a tiempo. ${cierre}`,
-    urgente: `Hola grupo, ultimo aviso de la ${cuotaLabel}: ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}.${pendingNamesText} Por favor, quienes faltan envien la cuota o el comprobante lo antes posible. Si ya regularizaron su tema, obvien este mensaje y avisen para actualizar el registro. Gracias.`,
-    regularizar: `Hola grupo, para regularizar pagos de la ${cuotaLabel}, este es el resumen de saldos pendientes considerando deuda atrasada mas la cuota actual: ${regularizationText} Si alguna situacion ya fue regularizada, por favor obvien este mensaje y envien el comprobante para actualizar el sistema. Gracias.`,
+    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} ${paidText} y faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. Datos para transferencia:\n${transferText}\n${cierre}`,
+    cercano: `Hola grupo, aviso amable de organizacion: para la ${cuotaLabel} ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Les pido que podamos dejarlo ordenado a tiempo. Datos para transferencia:\n${transferText}\n${cierre}`,
+    urgente: `Hola grupo, ultimo aviso de la ${cuotaLabel}: ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}.${pendingNamesText} Por favor, quienes faltan envien la cuota o el comprobante lo antes posible. Datos para transferencia:\n${transferText}\nSi ya regularizaron su tema, obvien este mensaje y avisen para actualizar el registro. Gracias.`,
+    regularizar: `Hola grupo, para regularizar pagos de la ${cuotaLabel}, este es el resumen de saldos pendientes considerando deuda atrasada mas la cuota actual: ${regularizationText} Datos para transferencia:\n${transferText}\nSi alguna situacion ya fue regularizada, por favor obvien este mensaje y envien el comprobante para actualizar el sistema. Gracias.`,
+    transferencia: `Hola grupo, comparto los datos para transferir el pago de la ${cuotaLabel}:\n${transferText}\nPor favor enviar comprobante al realizar el pago para actualizar el registro. Gracias.`,
   };
 };
 
@@ -878,6 +898,7 @@ function App() {
     updateConfiguracionCes,
     updateConfiguracionSeguridad,
     updateConfiguracionMicrocredito,
+    updateCuentaTransferencia,
     recalcularPagosCes,
     marcarPagado,
     cambiarEstado,
@@ -1169,8 +1190,9 @@ function App() {
       pendingAmount: saldoPendienteGrupo,
       pendingNames: nombresPendientesGrupo,
       regularizationLines: regularizacionPendienteGrupo,
+      cuentaTransferencia: state.configuracion.cuentaTransferencia,
     }),
-    [cobrosPeriodo.length, nombresPendientesGrupo, periodo, personasPagadasGrupo, personasPendientesGrupo, regularizacionPendienteGrupo, saldoPendienteGrupo],
+    [cobrosPeriodo.length, nombresPendientesGrupo, periodo, personasPagadasGrupo, personasPendientesGrupo, regularizacionPendienteGrupo, saldoPendienteGrupo, state.configuracion.cuentaTransferencia],
   );
   const contextoVencimientoGrupo = useMemo(() => getPaymentDeadlineContext(periodo), [periodo]);
   const cesTotals = getPeriodoTotals(state.pagosCes);
@@ -1524,6 +1546,28 @@ function App() {
     }
   };
 
+  const copiarCuentaTransferencia = async () => {
+    const message = formatTransferAccountText(state.configuracion.cuentaTransferencia);
+    try {
+      await navigator.clipboard.writeText(message);
+      registrarMovimiento({
+        tipo: "notificacion",
+        accion: "Cuenta de transferencia copiada",
+        detalle: message,
+        entidadId: periodo?.id,
+      });
+      await informarSistema("Datos de transferencia copiados. Ya puedes pegarlos en WhatsApp.", {
+        tone: "success",
+      });
+    } catch {
+      await informarSistema(message, {
+        title: "Datos de transferencia",
+        tone: "info",
+        confirmLabel: "Listo",
+      });
+    }
+  };
+
   const goPublicHome = () => {
     window.location.hash = "";
     setPublicRoute("home");
@@ -1811,6 +1855,37 @@ function App() {
             ))}
           </div>
 
+          <section className="transfer-account-card" aria-label="Cuenta para transferencias del ciclo">
+            <div className="transfer-account-head">
+              <span><Landmark size={18} /></span>
+              <div>
+                <p className="eyebrow">Cuenta para transferencias</p>
+                <h2>{state.configuracion.cuentaTransferencia.titular || "Titular sin configurar"}</h2>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Banco</dt>
+                <dd>{state.configuracion.cuentaTransferencia.banco || "Sin banco"}</dd>
+              </div>
+              <div>
+                <dt>Tipo</dt>
+                <dd>{state.configuracion.cuentaTransferencia.tipoCuenta || "Sin tipo"}</dd>
+              </div>
+              <div>
+                <dt>RUT</dt>
+                <dd>{state.configuracion.cuentaTransferencia.rut || "Sin RUT"}</dd>
+              </div>
+              <div>
+                <dt>N° cuenta</dt>
+                <dd>{state.configuracion.cuentaTransferencia.numeroCuenta || "Sin numero"}</dd>
+              </div>
+            </dl>
+            <button className="primary-button" type="button" onClick={() => void copiarCuentaTransferencia()}>
+              <Clipboard size={17} /> Copiar datos
+            </button>
+          </section>
+
           <section className={`group-collection-panel ${contextoVencimientoGrupo.tone}`}>
             <div className="group-collection-copy">
               <p className="eyebrow">WhatsApp grupo</p>
@@ -1827,18 +1902,19 @@ function App() {
             </div>
             <div className="group-message-actions" aria-label="Crear mensaje grupal de cobro">
               {[
-                { key: "amable", label: "Amable", icon: <MessageCircle size={17} />, message: mensajesCobroGrupo.amable },
-                { key: "cercano", label: "Fecha cerca", icon: <CalendarDays size={17} />, message: mensajesCobroGrupo.cercano },
-                { key: "urgente", label: "Ultimo aviso", icon: <Send size={17} />, message: mensajesCobroGrupo.urgente },
-                { key: "regularizar", label: "Regularizar", icon: <AlertTriangle size={17} />, message: mensajesCobroGrupo.regularizar },
+                { key: "amable", label: "Amable", icon: <MessageCircle size={17} />, message: mensajesCobroGrupo.amable, requiresPending: true },
+                { key: "cercano", label: "Fecha cerca", icon: <CalendarDays size={17} />, message: mensajesCobroGrupo.cercano, requiresPending: true },
+                { key: "urgente", label: "Ultimo aviso", icon: <Send size={17} />, message: mensajesCobroGrupo.urgente, requiresPending: true },
+                { key: "regularizar", label: "Regularizar", icon: <AlertTriangle size={17} />, message: mensajesCobroGrupo.regularizar, requiresPending: true },
+                { key: "transferencia", label: "Transferencia", icon: <Landmark size={17} />, message: mensajesCobroGrupo.transferencia, requiresPending: false },
               ].map((action) => (
                 <button
                   key={action.key}
-                  className={personasPendientesGrupo ? "secondary-button" : "secondary-button disabled"}
+                  className={!action.requiresPending || personasPendientesGrupo ? "secondary-button" : "secondary-button disabled"}
                   type="button"
-                  disabled={!personasPendientesGrupo}
+                  disabled={action.requiresPending && !personasPendientesGrupo}
                   onClick={() => {
-                    if (!personasPendientesGrupo) {
+                    if (action.requiresPending && !personasPendientesGrupo) {
                       return;
                     }
                     generarMensajeCobroGrupo(action.key as GroupPaymentMessageKey, action.label, action.message);
@@ -2148,6 +2224,7 @@ function App() {
           onCes={updateConfiguracionCes}
           onSeguridad={updateConfiguracionSeguridad}
           onMicrocredito={updateConfiguracionMicrocredito}
+          onCuentaTransferencia={updateCuentaTransferencia}
           onRecalcularCes={handleRecalcularCes}
           busqueda={busqueda}
           onBusqueda={setBusqueda}
@@ -5080,6 +5157,7 @@ function ConfigPanel({
   onCes,
   onSeguridad,
   onMicrocredito,
+  onCuentaTransferencia,
   onRecalcularCes,
   busqueda,
   onBusqueda,
@@ -5100,6 +5178,7 @@ function ConfigPanel({
   onCes: (patch: Partial<ConfiguracionCes>) => void;
   onSeguridad: (patch: Partial<ConfiguracionSeguridad>) => void;
   onMicrocredito: (patch: Partial<ConfiguracionMicrocredito>) => void;
+  onCuentaTransferencia: (patch: Partial<CuentaTransferencia>) => void;
   onRecalcularCes: () => void;
   busqueda: string;
   onBusqueda: (value: string) => void;
@@ -5294,6 +5373,26 @@ function ConfigPanel({
           <ConfigInput label="Zona" value={state.centro.zona} onChange={(value) => onCentro({ zona: value })} />
           <ConfigInput label="Asesor" value={state.centro.asesor} onChange={(value) => onCentro({ asesor: value })} />
         </div>
+      </section>
+
+      <section className="config-section transfer-config-section">
+        <header>
+          <div>
+            <p className="eyebrow">Cobros</p>
+            <h2>Cuenta de transferencia del ciclo</h2>
+          </div>
+          <Landmark size={22} />
+        </header>
+        <div className="settings-grid">
+          <ConfigInput label="Titular" value={state.configuracion.cuentaTransferencia.titular} onChange={(value) => onCuentaTransferencia({ titular: value })} />
+          <ConfigInput label="RUT titular" value={state.configuracion.cuentaTransferencia.rut} onChange={(value) => onCuentaTransferencia({ rut: value })} />
+          <ConfigInput label="Banco" value={state.configuracion.cuentaTransferencia.banco} onChange={(value) => onCuentaTransferencia({ banco: value })} />
+          <ConfigInput label="Tipo de cuenta" value={state.configuracion.cuentaTransferencia.tipoCuenta} onChange={(value) => onCuentaTransferencia({ tipoCuenta: value })} />
+          <ConfigInput label="Numero de cuenta" value={state.configuracion.cuentaTransferencia.numeroCuenta} inputMode="numeric" onChange={(value) => onCuentaTransferencia({ numeroCuenta: value })} />
+          <ConfigInput label="Correo para comprobante" value={state.configuracion.cuentaTransferencia.correo} onChange={(value) => onCuentaTransferencia({ correo: value })} />
+          <ConfigInput label="Nota" value={state.configuracion.cuentaTransferencia.nota} onChange={(value) => onCuentaTransferencia({ nota: value })} />
+        </div>
+        <p className="config-note">Estos datos aparecen en Cobros y se agregan a los mensajes grupales preparados para WhatsApp.</p>
       </section>
 
       <section className="config-section">

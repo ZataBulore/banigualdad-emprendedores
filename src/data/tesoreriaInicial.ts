@@ -66,6 +66,15 @@ export const configuracionInicial: ConfiguracionSistema = {
       "jbetanzo74@gmail.com",
     ],
   },
+  cuentaTransferencia: {
+    titular: "Jorge Betanzo",
+    rut: "18.596.164-8",
+    banco: "Banco Estado",
+    tipoCuenta: "Cuenta RUT",
+    numeroCuenta: "18596164",
+    correo: "",
+    nota: "Integrante del ciclo",
+  },
 };
 
 export const getMontoCes = (
