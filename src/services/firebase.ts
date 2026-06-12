@@ -54,11 +54,13 @@ export const FIREBASE_SOLICITUDES_COLLECTION =
   import.meta.env.VITE_FIREBASE_SOLICITUDES_COLLECTION || "solicitudesEmprendimientos";
 export const FIREBASE_ASSETS_COLLECTION =
   import.meta.env.VITE_FIREBASE_ASSETS_COLLECTION || "archivos";
+const firebaseAssetBackend = getEnvValue("VITE_FIREBASE_ASSET_BACKEND").toLowerCase();
+const shouldUseFirebaseStorage = firebaseAssetBackend === "storage";
 
 const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
 export const firebaseAuth = app ? getAuth(app) : null;
 const firestore = app ? (FIREBASE_DATABASE_ID ? initializeFirestore(app, {}, FIREBASE_DATABASE_ID) : getFirestore(app)) : null;
-const storage = app ? getStorage(app) : null;
+const storage = app && shouldUseFirebaseStorage ? getStorage(app) : null;
 
 const getStateRef = () => {
   if (!firestore) return null;
