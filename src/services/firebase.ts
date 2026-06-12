@@ -62,6 +62,20 @@ const getStateRef = () => {
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
+const stripInlineFilesForFirestore = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map(stripInlineFilesForFirestore) as T;
+  }
+
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== "dataUrl")
+      .map(([key, item]) => [key, stripInlineFilesForFirestore(item)]),
+  ) as T;
+};
+
 const withFirebaseTimeout = async <T>(operation: Promise<T>, fallbackMessage: string, timeoutMs = 12000) => {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -109,11 +123,12 @@ export const readRemoteState = async () => {
 export const saveRemoteState = async (state: TesoreriaState, updatedBy?: string) => {
   const stateRef = getStateRef();
   if (!stateRef) return;
+  const remoteState = stripInlineFilesForFirestore(state);
   await withFirebaseTimeout(
     setDoc(
       stateRef,
       {
-        state: sanitizeForFirestore(state),
+        state: sanitizeForFirestore(remoteState),
         updatedAt: serverTimestamp(),
         updatedBy: updatedBy ?? "",
       },

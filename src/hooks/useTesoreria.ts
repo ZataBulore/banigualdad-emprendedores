@@ -43,6 +43,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     return "Firebase rechazo el guardado porque se agoto la cuota diaria gratuita de escrituras de Firestore. El cambio quedo guardado en este equipo y se podra sincronizar cuando la cuota se restablezca o se habilite billing en Firebase.";
   }
 
+  if (normalized.includes("exceeds the maximum allowed size") || normalized.includes("maximum allowed size")) {
+    return "Firebase rechazo el guardado porque el documento del centro supero 1 MB. El sistema ahora sincroniza los registros sin incrustar archivos pesados; vuelve a intentar guardar el cambio.";
+  }
+
   return message;
 };
 

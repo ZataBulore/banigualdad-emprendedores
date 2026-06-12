@@ -424,10 +424,11 @@ const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
   adjunto.url || adjunto.dataUrl || "";
 
 const getAttachmentProviderLabel = (adjunto: ComprobanteAdjunto) => {
-  if (adjunto.storageProvider === "firebase") return "Firebase";
-  if (adjunto.dataUrl) return "Firebase";
+  if (adjunto.url && adjunto.storageProvider === "firebase") return "Firebase Storage";
+  if (adjunto.dataUrl) return "Disponible en este equipo";
   if (adjunto.url) return "Enlace externo";
-  return "Sin archivo disponible";
+  if (adjunto.storageProvider === "firebase") return "Referencia en Firebase";
+  return "Archivo no sincronizado";
 };
 
 const isImageFile = (file: File) =>
@@ -489,7 +490,7 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
       tamano: image.tamano,
       createdAt,
       dataUrl: image.dataUrl,
-      storageProvider: "firebase" as const,
+      storageProvider: "local" as const,
     };
   }
 
@@ -509,7 +510,7 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
     tamano: file.size,
     createdAt: new Date().toISOString(),
     dataUrl,
-    storageProvider: "firebase" as const,
+    storageProvider: "local" as const,
   };
 };
 
@@ -3561,7 +3562,7 @@ function AttachmentCard({
       <div>
         <strong>{index + 1}. {adjunto.nombre}</strong>
         <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
-        <small className={`storage-provider ${adjunto.dataUrl || adjunto.storageProvider === "firebase" ? "firebase" : "local"}`}>
+        <small className={`storage-provider ${adjunto.url && adjunto.storageProvider === "firebase" ? "firebase" : "local"}`}>
           {getAttachmentProviderLabel(adjunto)}
         </small>
         {!isAvailable && (
