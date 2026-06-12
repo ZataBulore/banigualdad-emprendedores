@@ -453,7 +453,12 @@ const compressImageFile = async (file: File) => {
   const objectUrl = URL.createObjectURL(file);
   let dataUrl = "";
   try {
-    const image = await loadImage(objectUrl);
+    let image: HTMLImageElement;
+    try {
+      image = await loadImage(objectUrl);
+    } catch {
+      image = await loadImage(await readFileAsDataUrl(file));
+    }
     const ratio = Math.min(1, MAX_IMAGE_SIDE / Math.max(image.width, image.height));
     const width = Math.max(1, Math.round(image.width * ratio));
     const height = Math.max(1, Math.round(image.height * ratio));
