@@ -62,17 +62,18 @@ const getStateRef = () => {
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
-const stripInlineFilesForFirestore = <T>(value: T): T => {
+const compactStateForFirestore = <T>(value: T): T => {
   if (Array.isArray(value)) {
-    return value.map(stripInlineFilesForFirestore) as T;
+    return value.map(compactStateForFirestore) as T;
   }
 
   if (!value || typeof value !== "object") return value;
 
+  const record = value as Record<string, unknown>;
   return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => key !== "dataUrl")
-      .map(([key, item]) => [key, stripInlineFilesForFirestore(item)]),
+    Object.entries(record)
+      .filter(([key]) => key !== "dataUrl" && key !== "comprobanteAdjunto")
+      .map(([key, item]) => [key, compactStateForFirestore(item)]),
   ) as T;
 };
 
@@ -123,7 +124,7 @@ export const readRemoteState = async () => {
 export const saveRemoteState = async (state: TesoreriaState, updatedBy?: string) => {
   const stateRef = getStateRef();
   if (!stateRef) return;
-  const remoteState = stripInlineFilesForFirestore(state);
+  const remoteState = compactStateForFirestore(state);
   await withFirebaseTimeout(
     setDoc(
       stateRef,
