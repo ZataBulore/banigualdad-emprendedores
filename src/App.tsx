@@ -771,6 +771,8 @@ const formatTransferAccountText = (cuenta: CuentaTransferencia) => {
   return lines.length ? lines.join("\n") : "Cuenta de transferencia aun no configurada.";
 };
 
+const formatMessageAmountLine = (label: string, value: string | number) => `- ${label}: ${value}.`;
+
 const buildGroupPaymentMessages = ({
   periodo,
   paidCount,
@@ -792,22 +794,28 @@ const buildGroupPaymentMessages = ({
 }) => {
   const deadline = getPaymentDeadlineContext(periodo);
   const cuotaLabel = periodo ? `cuota ${periodo.numeroCuota}` : "cuota vigente";
-  const paidText = `${paidCount} de ${totalCount} persona${totalCount === 1 ? "" : "s"} ya ${paidCount === 1 ? "ha" : "han"} pagado`;
-  const personasText = `${pendingCount} persona${pendingCount === 1 ? "" : "s"}`;
-  const amountText = pendingAmount > 0 ? `, por un saldo total de ${formatCurrency(pendingAmount)}` : "";
-  const pendingNamesText = pendingNames.length ? ` Personas pendientes: ${formatPeopleList(pendingNames)}.` : "";
+  const paidLine = formatMessageAmountLine("Pagadas", `${paidCount} de ${totalCount} persona${totalCount === 1 ? "" : "s"}`);
+  const pendingLine = formatMessageAmountLine("Pendientes", `${pendingCount} persona${pendingCount === 1 ? "" : "s"}`);
+  const amountLine = formatMessageAmountLine("Saldo pendiente total", formatCurrency(pendingAmount));
+  const pendingNamesText = pendingNames.length
+    ? `\nPersonas pendientes:\n${pendingNames.map((name) => `- ${name}.`).join("\n")}\n`
+    : "";
   const regularizationText = regularizationLines.length
-    ? regularizationLines.join(" ")
+    ? regularizationLines.map((line) => `- ${line}`).join("\n")
     : "No aparecen deudas pendientes para regularizar en este periodo.";
   const transferText = formatTransferAccountText(cuentaTransferencia);
-  const cierre = "Recordemos que este grupo es de apoyo solidario, respetuoso y responsable; avisar a tiempo ayuda a no entorpecer la gestion del centro.";
+  const summaryBlock = `Resumen ${cuotaLabel}:\n${paidLine}\n${pendingLine}\n${amountLine}`;
+  const deadlineBlock = `Plazo: ${deadline.label}. ${deadline.daysText}.`;
+  const transferBlock = `Datos para transferencia:\n${transferText}`;
+  const receiptRequest = "Por favor, al transferir, envien el comprobante para actualizar el registro.";
+  const cierre = "Avisar a tiempo ayuda a mantener ordenado el pago del centro. Gracias.";
 
   return {
-    amable: `Hola grupo, buen dia. Les cuento que para la ${cuotaLabel} ${paidText} y faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Si alguien ya pago, por favor envie su comprobante o avise para actualizar el registro. Datos para transferencia:\n${transferText}\n${cierre}`,
-    cercano: `Hola grupo, aviso amable de organizacion: para la ${cuotaLabel} ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}. El plazo ${deadline.label}; ${deadline.daysText}. Les pido que podamos dejarlo ordenado a tiempo. Datos para transferencia:\n${transferText}\n${cierre}`,
-    urgente: `Hola grupo, ultimo aviso de la ${cuotaLabel}: ${paidText} y aun faltan ${personasText} pendiente${pendingCount === 1 ? "" : "s"} de pago${amountText}.${pendingNamesText} Por favor, quienes faltan envien la cuota o el comprobante lo antes posible. Datos para transferencia:\n${transferText}\nSi ya regularizaron su tema, obvien este mensaje y avisen para actualizar el registro. Gracias.`,
-    regularizar: `Hola grupo, para regularizar pagos de la ${cuotaLabel}, este es el resumen de saldos pendientes considerando deuda atrasada mas la cuota actual: ${regularizationText} Datos para transferencia:\n${transferText}\nSi alguna situacion ya fue regularizada, por favor obvien este mensaje y envien el comprobante para actualizar el sistema. Gracias.`,
-    transferencia: `Hola grupo, comparto los datos para transferir el pago de la ${cuotaLabel}:\n${transferText}\nPor favor enviar comprobante al realizar el pago para actualizar el registro. Gracias.`,
+    amable: `Hola grupo. Les dejo el estado de pago para mantenernos ordenados.\n\n${summaryBlock}\n\n${deadlineBlock}\n\n${transferBlock}\n\nSi alguien ya pago, por favor envie el comprobante o avise para actualizar el registro. ${cierre}`,
+    cercano: `Hola grupo. Recordatorio de organizacion para la ${cuotaLabel}.\n\n${summaryBlock}\n\n${deadlineBlock}\n\n${transferBlock}\n\n${receiptRequest} ${cierre}`,
+    urgente: `Hola grupo. Ultimo aviso para ordenar la ${cuotaLabel}.\n\n${summaryBlock}${pendingNamesText}\n${deadlineBlock}\n\n${transferBlock}\n\nQuienes aun tengan saldo pendiente, por favor regularicen lo antes posible. Si ya pagaron, envien el comprobante para actualizar el sistema. Gracias.`,
+    regularizar: `Hola grupo. Comparto el detalle para regularizar saldos de la ${cuotaLabel}. Los montos separan deuda atrasada y cuota actual para evitar confusiones.\n\n${regularizationText}\n\n${transferBlock}\n\nSi alguna situacion ya fue regularizada, por favor envien el comprobante o avisen para actualizar el sistema. Gracias.`,
+    transferencia: `Hola grupo. Comparto los datos para transferir el pago de la ${cuotaLabel}.\n\n${transferBlock}\n\n${receiptRequest} Gracias.`,
   };
 };
 
@@ -1177,8 +1185,8 @@ function App() {
       .filter((item) => item.total > 0)
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
       .map((item) => {
-        const atrasoText = item.deudaAtrasada > 0 ? `deuda atrasada ${formatCurrency(item.deudaAtrasada)} + ` : "";
-        return `${item.nombre}: ${atrasoText}cuota actual ${formatCurrency(item.deudaActual)} = total ${formatCurrency(item.total)}.`;
+        const atrasoText = item.deudaAtrasada > 0 ? `deuda atrasada: ${formatCurrency(item.deudaAtrasada)}; ` : "";
+        return `${item.nombre}: ${atrasoText}cuota actual: ${formatCurrency(item.deudaActual)}; total: ${formatCurrency(item.total)}.`;
       });
   }, [cobrosPendientesGrupo, periodo, personasPorId, state.cobros, state.periodos]);
   const mensajesCobroGrupo = useMemo(
