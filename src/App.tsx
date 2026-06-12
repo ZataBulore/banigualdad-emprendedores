@@ -56,7 +56,6 @@ import {
   signOutFirebase,
   subscribeFirebaseAuthState,
 } from "./services/firebase";
-import { isSupabaseConfigured, uploadSupabaseAsset, uploadSupabaseComprobante } from "./services/supabase";
 import { createSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
 import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, CuentaTransferencia, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
@@ -408,11 +407,6 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
-const dataUrlToBlob = async (dataUrl: string) => {
-  const response = await fetch(dataUrl);
-  return response.blob();
-};
-
 const withUploadTimeout = async <T,>(operation: Promise<T>, timeoutMs = 20000): Promise<T> => {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -430,9 +424,10 @@ const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
   adjunto.url || adjunto.dataUrl || "";
 
 const getAttachmentProviderLabel = (adjunto: ComprobanteAdjunto) => {
-  if (adjunto.storageProvider === "supabase" || adjunto.url) return "Supabase";
   if (adjunto.storageProvider === "firebase") return "Firebase";
-  return "Solo este equipo";
+  if (adjunto.dataUrl) return "Firebase";
+  if (adjunto.url) return "Enlace externo";
+  return "Sin archivo disponible";
 };
 
 const isImageFile = (file: File) =>
@@ -487,16 +482,14 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   if (isImageFile(file)) {
     const image = await compressImageFile(file);
     const createdAt = new Date().toISOString();
-    const uploaded = isSupabaseConfigured
-      ? await uploadSupabaseComprobante(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo)
-      : null;
 
     return {
       nombre: image.nombre,
       tipo: image.tipo,
       tamano: image.tamano,
       createdAt,
-      ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
+      dataUrl: image.dataUrl,
+      storageProvider: "firebase" as const,
     };
   }
 
@@ -509,16 +502,14 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
   }
 
   const dataUrl = await readFileAsDataUrl(file);
-  const uploaded = isSupabaseConfigured
-    ? await uploadSupabaseComprobante(file.name, file, file.type)
-    : null;
 
   return {
     nombre: file.name,
     tipo: file.type,
     tamano: file.size,
     createdAt: new Date().toISOString(),
-    ...(uploaded ?? { dataUrl, storageProvider: "local" as const }),
+    dataUrl,
+    storageProvider: "firebase" as const,
   };
 };
 
@@ -528,9 +519,6 @@ const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto>
   }
 
   const image = await compressImageFile(file);
-  const uploaded = isSupabaseConfigured
-    ? await uploadSupabaseAsset(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo, "emprendimientos")
-    : null;
 
   return {
     id: `foto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -538,7 +526,8 @@ const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto>
     tipo: image.tipo,
     tamano: image.tamano,
     createdAt: new Date().toISOString(),
-    ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
+    dataUrl: image.dataUrl,
+    storageProvider: "firebase" as const,
   };
 };
 
@@ -548,9 +537,6 @@ const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
   }
 
   const image = await compressImageFile(file);
-  const uploaded = isSupabaseConfigured
-    ? await uploadSupabaseAsset(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo, "reuniones")
-    : null;
 
   return {
     id: `minuta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -558,7 +544,8 @@ const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
     tipo: image.tipo,
     tamano: image.tamano,
     createdAt: new Date().toISOString(),
-    ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
+    dataUrl: image.dataUrl,
+    storageProvider: "firebase" as const,
   };
 };
 
@@ -3447,7 +3434,7 @@ function ComprobanteAdjuntoInput({
       onChange([...currentAdjuntos, await withUploadTimeout(createComprobanteAdjunto(file))]);
     } catch (uploadError) {
       const message = uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.";
-      setError(`${message} Si estas en el celular, prueba con una captura liviana. Si el error menciona Supabase o bucket, hay que revisar el almacenamiento de comprobantes.`);
+      setError(`${message} Si estas en el celular, prueba con una captura liviana.`);
     } finally {
       setLoading(false);
     }
@@ -3474,7 +3461,7 @@ function ComprobanteAdjuntoInput({
             <div>
               <strong>{index + 1}. {adjunto.nombre}</strong>
               <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
-              <small className={`storage-provider ${adjunto.storageProvider === "supabase" || adjunto.url ? "supabase" : "local"}`}>
+              <small className={`storage-provider ${adjunto.dataUrl || adjunto.storageProvider === "firebase" ? "firebase" : "local"}`}>
                 {getAttachmentProviderLabel(adjunto)}
               </small>
             </div>
@@ -3513,7 +3500,7 @@ function ComprobanteAdjuntoInput({
           />
         </label>
         <small className="attachment-help">
-          {loading ? `Preparando archivo y subiendo a ${isSupabaseConfigured ? "Supabase" : "la nube disponible"}.` : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
+          {loading ? "Preparando archivo para guardar en Firebase." : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
         </small>
       </div>
       {error && <small className="attachment-error">{error}</small>}

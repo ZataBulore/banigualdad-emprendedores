@@ -43,10 +43,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
     return "Firebase rechazo el guardado porque se agoto la cuota diaria gratuita de escrituras de Firestore. El cambio quedo guardado en este equipo y se podra sincronizar cuando la cuota se restablezca o se habilite billing en Firebase.";
   }
 
-  if (normalized.includes("supabase") && (normalized.includes("storage") || normalized.includes("bucket"))) {
-    return "Supabase no pudo guardar el archivo. Revisa que el bucket de comprobantes exista y permita subida desde la app.";
-  }
-
   return message;
 };
 

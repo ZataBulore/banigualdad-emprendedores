@@ -95,7 +95,7 @@ export interface ComprobanteAdjunto {
   dataUrl?: string;
   url?: string;
   storagePath?: string;
-  storageProvider?: "supabase" | "firebase" | "local";
+  storageProvider?: "firebase" | "local";
   tamano: number;
   createdAt: string;
 }
@@ -109,7 +109,7 @@ export interface EmprendimientoFoto {
   dataUrl?: string;
   url?: string;
   storagePath?: string;
-  storageProvider?: "supabase" | "firebase" | "local";
+  storageProvider?: "firebase" | "local";
   tamano: number;
   createdAt: string;
 }
@@ -231,7 +231,7 @@ export interface ReunionFoto {
   dataUrl?: string;
   url?: string;
   storagePath?: string;
-  storageProvider?: "supabase" | "firebase" | "local";
+  storageProvider?: "firebase" | "local";
   tamano: number;
   createdAt: string;
 }

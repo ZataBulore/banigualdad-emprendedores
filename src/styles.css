@@ -4413,7 +4413,7 @@ label.secondary-button:hover,
   line-height: 1.1;
 }
 
-.storage-provider.supabase {
+.storage-provider.firebase {
   color: #08715b;
   background: #e8f6ec;
 }
