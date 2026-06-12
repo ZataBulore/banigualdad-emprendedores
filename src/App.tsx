@@ -61,7 +61,7 @@ type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">;
 type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">;
-type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "observacion">;
+type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "comprobantesAdjuntos" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GroupPaymentMessageKey = "amable" | "cercano" | "urgente" | "regularizar";
 type GeneratedGroupMessage = {
@@ -276,8 +276,24 @@ const estadoActionClass = (estadoActual: EstadoPago, estadoBoton: EstadoPago, ba
 
 const pressFeedbackSelector = "button, label.secondary-button, .quota-option";
 
-const validarComprobanteTransferencia = async (metodoPago: MetodoPago, comprobanteAdjunto?: ComprobanteAdjunto | null) => {
-  if (!transferenciaRequiereAdjunto(metodoPago) || comprobanteAdjunto) return true;
+const getComprobantesAdjuntos = (
+  comprobanteAdjunto?: ComprobanteAdjunto | null,
+  comprobantesAdjuntos?: ComprobanteAdjunto[],
+) => {
+  const merged = [...(comprobantesAdjuntos ?? [])];
+  if (comprobanteAdjunto && !merged.some((item) => item.nombre === comprobanteAdjunto.nombre && item.createdAt === comprobanteAdjunto.createdAt)) {
+    merged.unshift(comprobanteAdjunto);
+  }
+
+  return merged.slice(0, 2);
+};
+
+const validarComprobanteTransferencia = async (
+  metodoPago: MetodoPago,
+  comprobanteAdjunto?: ComprobanteAdjunto | null,
+  comprobantesAdjuntos?: ComprobanteAdjunto[],
+) => {
+  if (!transferenciaRequiereAdjunto(metodoPago) || getComprobantesAdjuntos(comprobanteAdjunto, comprobantesAdjuntos).length) return true;
   await informarSistema("Para registrar una transferencia como pagada, adjunta primero el comprobante enviado.", {
     tone: "warning",
   });
@@ -1265,7 +1281,7 @@ function App() {
           cobro.fechaPago,
           cobro.metodoPago,
           cobro.referenciaPago,
-          cobro.comprobanteAdjunto?.nombre ?? "",
+          getComprobantesAdjuntos(cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos).map((comprobante) => comprobante.nombre).join("; "),
           cobro.observacion,
           "",
           "",
@@ -1294,7 +1310,7 @@ function App() {
           pago.fechaPago,
           pago.metodoPago,
           pago.referenciaPago,
-          pago.comprobanteAdjunto?.nombre ?? "",
+          getComprobantesAdjuntos(pago.comprobanteAdjunto, pago.comprobantesAdjuntos).map((comprobante) => comprobante.nombre).join("; "),
           pago.observacion,
           "",
           "",
@@ -1720,6 +1736,13 @@ function App() {
 
       <SectionBanner tab={tab} periodo={periodo} totals={totals} cesTotals={cesTotals} />
 
+      {(cloudStatus === "saving" || cloudStatus === "connecting") && (
+        <div className={`sync-activity ${cloudStatus}`} role="status" aria-live="polite">
+          <span className="inline-spinner" aria-hidden="true" />
+          <strong>{cloudStatus === "saving" ? "Guardando cambios en Firebase" : "Reconectando con Firebase"}</strong>
+        </div>
+      )}
+
       {tab === "cobros" && (
         <section className="workspace">
           <div className="week-strip" role="list" aria-label="Semanas de cobro">
@@ -1841,15 +1864,15 @@ function App() {
                   periodo={periodo}
                   persona={persona}
                   onPagar={async () => {
-                    if (!(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
+                    if (!(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos))) return;
                     marcarPagado(cobro.id);
                   }}
                   onEstado={async (estado) => {
-                    if (estado === "pagado" && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
+                    if (estado === "pagado" && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos))) return;
                     cambiarEstado(cobro.id, estado);
                   }}
                   onMonto={async (monto) => {
-                    if (monto >= cobro.totalEsperado && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto))) return;
+                    if (monto >= cobro.totalEsperado && !(await validarComprobanteTransferencia(cobro.metodoPago, cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos))) return;
                     registrarMonto(cobro.id, monto);
                   }}
                   onDetalle={(detail) => actualizarDetalle(cobro.id, detail)}
@@ -1923,15 +1946,15 @@ function App() {
                   pago={pago}
                   persona={persona}
                   onPagar={async () => {
-                    if (!(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
+                    if (!(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto, pago.comprobantesAdjuntos))) return;
                     marcarCesPagado(pago.id);
                   }}
                   onEstado={async (estado) => {
-                    if (estado === "pagado" && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
+                    if (estado === "pagado" && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto, pago.comprobantesAdjuntos))) return;
                     cambiarEstadoCes(pago.id, estado);
                   }}
                   onMonto={async (monto) => {
-                    if (monto >= pago.totalEsperado && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto))) return;
+                    if (monto >= pago.totalEsperado && !(await validarComprobanteTransferencia(pago.metodoPago, pago.comprobanteAdjunto, pago.comprobantesAdjuntos))) return;
                     registrarMontoCes(pago.id, monto);
                   }}
                   onDetalle={(detail) => actualizarDetalleCes(pago.id, detail)}
@@ -2058,6 +2081,7 @@ function App() {
           onBusqueda={setBusqueda}
           onAsistencia={updateAsistencia}
           onTodosPresentes={marcarTodosPresentes}
+          savingChanges={cloudStatus === "saving" || cloudStatus === "connecting"}
         />
       )}
 
@@ -2875,36 +2899,29 @@ function AppDialogHost({ request }: { request: AppDialogRequest | null }) {
 }
 
 function ComprobanteAdjuntoInput({
-  adjunto,
+  adjuntos,
   onChange,
 }: {
-  adjunto?: ComprobanteAdjunto | null;
-  onChange: (adjunto: ComprobanteAdjunto | null) => void;
+  adjuntos?: ComprobanteAdjunto[];
+  onChange: (adjuntos: ComprobanteAdjunto[]) => void;
 }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewAdjunto, setPreviewAdjunto] = useState<ComprobanteAdjunto | null>(null);
   const [zoom, setZoom] = useState(1);
-  const currentAdjunto = adjunto ?? undefined;
+  const currentAdjuntos = (adjuntos ?? []).slice(0, 2);
+  const canUpload = currentAdjuntos.length < 2;
 
   const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-
-    if (currentAdjunto) {
-      const confirmed = await confirmarAccionCritica(`Reemplazar "${currentAdjunto.nombre}" por "${file.name}"? El comprobante anterior se quitara de este registro y esta accion quedara en auditoria.`, {
-        title: "Semilla Emprende Negrete advierte",
-        tone: "warning",
-        confirmLabel: "Reemplazar",
-      });
-      if (!confirmed) return;
-    }
+    if (!canUpload) return;
 
     setError("");
     setLoading(true);
     try {
-      onChange(await createComprobanteAdjunto(file));
+      onChange([...currentAdjuntos, await createComprobanteAdjunto(file)]);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.");
     } finally {
@@ -2912,68 +2929,74 @@ function ComprobanteAdjuntoInput({
     }
   };
 
-  const handleRemove = async () => {
-    if (!currentAdjunto) return;
-    const confirmed = await confirmarAccionCritica(`Quitar "${currentAdjunto.nombre}" de este registro? El comprobante dejara de estar disponible y esta accion quedara en auditoria.`, {
+  const handleRemove = async (adjunto: ComprobanteAdjunto) => {
+    const confirmed = await confirmarAccionCritica(`Quitar "${adjunto.nombre}" de este registro? El comprobante dejara de estar disponible y esta accion quedara en auditoria.`, {
       title: "Semilla Emprende Negrete advierte",
       tone: "danger",
       confirmLabel: "Quitar",
     });
     if (!confirmed) return;
-    setPreviewOpen(false);
-    onChange(null);
+    setPreviewAdjunto((current) => (current?.createdAt === adjunto.createdAt && current.nombre === adjunto.nombre ? null : current));
+    onChange(currentAdjuntos.filter((item) => item.createdAt !== adjunto.createdAt || item.nombre !== adjunto.nombre));
   };
 
   return (
     <div className="attachment-control">
-      <div className={currentAdjunto ? "attachment-card" : "attachment-card empty"}>
-        <FileImage size={17} />
-        <div>
-          <strong>{currentAdjunto ? currentAdjunto.nombre : "Sin archivo adjunto"}</strong>
-          <span>
-            {currentAdjunto
-              ? `${formatFileSize(currentAdjunto.tamano)} · ${formatDateTime(currentAdjunto.createdAt)}`
-              : `Imagen o PDF liviano. Maximo ${formatFileSize(MAX_COMPROBANTE_BYTES)}.`}
-          </span>
-        </div>
+      <div className="attachment-stack">
+        {currentAdjuntos.map((adjunto, index) => (
+          <div className="attachment-card" key={`${adjunto.createdAt}-${adjunto.nombre}`}>
+            <FileImage size={17} />
+            <div>
+              <strong>{index + 1}. {adjunto.nombre}</strong>
+              <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
+            </div>
+            <button type="button" className="secondary-button compact" onClick={() => {
+              setZoom(1);
+              setPreviewAdjunto(adjunto);
+            }}>
+              <Eye size={16} /> Ver
+            </button>
+            <button type="button" className="danger-button compact" onClick={() => void handleRemove(adjunto)}>
+              <Trash2 size={16} /> Quitar
+            </button>
+          </div>
+        ))}
+        {!currentAdjuntos.length && (
+          <div className="attachment-card empty">
+            <FileImage size={17} />
+            <div>
+              <strong>Sin archivo adjunto</strong>
+              <span>Imagen o PDF liviano. Maximo {formatFileSize(MAX_COMPROBANTE_BYTES)}.</span>
+            </div>
+          </div>
+        )}
       </div>
       <div className="attachment-actions">
-        <label className={loading ? "secondary-button disabled" : "secondary-button"}>
+        <label className={loading || !canUpload ? "secondary-button disabled" : "secondary-button"}>
           {loading ? <span className="inline-spinner" aria-hidden="true" /> : <Upload size={16} />}
-          {loading ? "Redimensionando" : currentAdjunto ? "Cambiar" : "Subir"}
+          {loading ? "Redimensionando" : currentAdjuntos.length ? "Agregar otro" : "Subir"}
           <input
             type="file"
             accept={ACCEPTED_COMPROBANTE_TYPES}
             onChange={handleFile}
-            disabled={loading}
+            disabled={loading || !canUpload}
           />
         </label>
-        {loading && <small className="attachment-help">Preparando archivo optimizado para sincronizar en Firebase.</small>}
-        {currentAdjunto && (
-          <>
-            <button type="button" className="secondary-button" onClick={() => {
-              setZoom(1);
-              setPreviewOpen(true);
-            }}>
-              <Eye size={16} /> Ver
-            </button>
-            <button type="button" className="danger-button compact" onClick={handleRemove}>
-              <Trash2 size={16} /> Quitar
-            </button>
-          </>
-        )}
+        <small className="attachment-help">
+          {loading ? "Preparando archivo optimizado para sincronizar en Firebase." : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
+        </small>
       </div>
       {error && <small className="attachment-error">{error}</small>}
-      {previewOpen && currentAdjunto && (
+      {previewAdjunto && (
         <div className="modal-backdrop" role="presentation">
           <section className="attachment-preview-modal" role="dialog" aria-modal="true" aria-labelledby="attachment-preview-title">
             <header>
               <div>
                 <p className="eyebrow">Comprobante</p>
-                <h2 id="attachment-preview-title">{currentAdjunto.nombre}</h2>
-                <span>{formatFileSize(currentAdjunto.tamano)} · {formatDateTime(currentAdjunto.createdAt)}</span>
+                <h2 id="attachment-preview-title">{previewAdjunto.nombre}</h2>
+                <span>{formatFileSize(previewAdjunto.tamano)} · {formatDateTime(previewAdjunto.createdAt)}</span>
               </div>
-              <button className="icon-button" onClick={() => setPreviewOpen(false)} aria-label="Cerrar comprobante">
+              <button className="icon-button" onClick={() => setPreviewAdjunto(null)} aria-label="Cerrar comprobante">
                 <X size={20} />
               </button>
             </header>
@@ -2987,15 +3010,15 @@ function ComprobanteAdjuntoInput({
                   <ZoomIn size={18} />
                 </button>
               </div>
-              <a className="secondary-button" href={currentAdjunto.dataUrl} download={currentAdjunto.nombre}>
+              <a className="secondary-button" href={previewAdjunto.dataUrl} download={previewAdjunto.nombre}>
                 <Download size={16} /> Descargar
               </a>
             </div>
             <div className="preview-stage">
-              {currentAdjunto.tipo.startsWith("image/") ? (
-                <img src={currentAdjunto.dataUrl} alt={`Comprobante ${currentAdjunto.nombre}`} style={{ transform: `scale(${zoom})` }} />
+              {previewAdjunto.tipo.startsWith("image/") ? (
+                <img src={previewAdjunto.dataUrl} alt={`Comprobante ${previewAdjunto.nombre}`} style={{ transform: `scale(${zoom})` }} />
               ) : (
-                <iframe title={`Comprobante ${currentAdjunto.nombre}`} src={currentAdjunto.dataUrl} style={{ transform: `scale(${zoom})` }} />
+                <iframe title={`Comprobante ${previewAdjunto.nombre}`} src={previewAdjunto.dataUrl} style={{ transform: `scale(${zoom})` }} />
               )}
             </div>
           </section>
@@ -3117,6 +3140,103 @@ function SearchInput({
   );
 }
 
+function CommitNumberInput({
+  value,
+  onCommit,
+  placeholder = "0",
+}: {
+  value: number;
+  onCommit: (value: number) => void;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(value ? String(value) : "");
+
+  useEffect(() => {
+    setDraft(value ? String(value) : "");
+  }, [value]);
+
+  const commit = () => {
+    const nextValue = Number(draft || 0);
+    if (Number.isFinite(nextValue) && nextValue !== value) onCommit(nextValue);
+  };
+
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      min="0"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+      placeholder={placeholder}
+    />
+  );
+}
+
+function CommitTextInput({
+  value,
+  onCommit,
+  placeholder,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  placeholder?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <input
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== value) onCommit(draft);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+      placeholder={placeholder}
+    />
+  );
+}
+
+function CommitTextarea({
+  value,
+  onCommit,
+  rows,
+}: {
+  value: string;
+  onCommit: (value: string) => void;
+  rows: number;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <textarea
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== value) onCommit(draft);
+      }}
+      rows={rows}
+    />
+  );
+}
+
 function CobroCard({
   cobro,
   periodo,
@@ -3134,12 +3254,13 @@ function CobroCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string }) => void;
   onEditarCobro: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(cobro.totalEsperado - cobro.montoPagado, 0);
   const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo" });
+  const comprobantesAdjuntos = getComprobantesAdjuntos(cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos);
 
   return (
     <article className={`payment-card ${cobro.estadoPago}`}>
@@ -3182,14 +3303,7 @@ function CobroCard({
 
       <label className="amount-input">
         <span>Monto recibido</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min="0"
-          value={cobro.montoPagado || ""}
-          onChange={(event) => onMonto(Number(event.target.value || 0))}
-          placeholder="0"
-        />
+        <CommitNumberInput value={cobro.montoPagado} onCommit={onMonto} />
       </label>
 
       <div className="card-actions">
@@ -3241,26 +3355,26 @@ function CobroCard({
           </button>
         </div>
         {cobro.metodoPago === "transferencia" ? (
-          <p className={cobro.comprobanteAdjunto ? "receipt-help" : "receipt-help warning"}>Para transferencia basta con adjuntar el comprobante enviado.</p>
+          <p className={comprobantesAdjuntos.length ? "receipt-help" : "receipt-help warning"}>Puedes adjuntar hasta dos comprobantes si el pago llego en mas de un deposito.</p>
         ) : (
           <label className="reference-input">
             <span>{getReferenciaLabel(cobro.metodoPago)}</span>
-            <input
+            <CommitTextInput
               value={cobro.referenciaPago}
-              onChange={(event) => onDetalle({ referenciaPago: event.target.value })}
+              onCommit={(referenciaPago) => onDetalle({ referenciaPago })}
               placeholder={getReferenciaPlaceholder(cobro.metodoPago)}
             />
           </label>
         )}
         <ComprobanteAdjuntoInput
-          adjunto={cobro.comprobanteAdjunto}
-          onChange={(comprobanteAdjunto) => onDetalle({ comprobanteAdjunto })}
+          adjuntos={comprobantesAdjuntos}
+          onChange={(nextAdjuntos) => onDetalle({ comprobanteAdjunto: nextAdjuntos[0] ?? null, comprobantesAdjuntos: nextAdjuntos })}
         />
       </section>
 
       <label className="note-input">
         <span>Observacion</span>
-        <textarea value={cobro.observacion} onChange={(event) => onDetalle({ observacion: event.target.value })} rows={2} />
+        <CommitTextarea value={cobro.observacion} onCommit={(observacion) => onDetalle({ observacion })} rows={2} />
       </label>
 
       <footer>
@@ -3462,12 +3576,13 @@ function CesCard({
   onPagar: () => void;
   onEstado: (estado: EstadoPago) => void;
   onMonto: (monto: number) => void;
-  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string }) => void;
+  onDetalle: (detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string }) => void;
   onEditarPersona: () => void;
   onPersona: () => void;
 }) {
   const saldo = Math.max(pago.totalEsperado - pago.montoPagado, 0);
   const marcarEfectivo = () => onDetalle({ metodoPago: "efectivo" });
+  const comprobantesAdjuntos = getComprobantesAdjuntos(pago.comprobanteAdjunto, pago.comprobantesAdjuntos);
 
   return (
     <article className={`payment-card ces-card ${pago.estadoPago}`}>
@@ -3501,14 +3616,7 @@ function CesCard({
 
       <label className="amount-input">
         <span>Monto recibido CES</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min="0"
-          value={pago.montoPagado || ""}
-          onChange={(event) => onMonto(Number(event.target.value || 0))}
-          placeholder="0"
-        />
+        <CommitNumberInput value={pago.montoPagado} onCommit={onMonto} />
       </label>
 
       <div className="card-actions">
@@ -3560,26 +3668,26 @@ function CesCard({
           </button>
         </div>
         {pago.metodoPago === "transferencia" ? (
-          <p className={pago.comprobanteAdjunto ? "receipt-help" : "receipt-help warning"}>Para transferencia basta con adjuntar el comprobante enviado.</p>
+          <p className={comprobantesAdjuntos.length ? "receipt-help" : "receipt-help warning"}>Puedes adjuntar hasta dos comprobantes si el pago llego en mas de un deposito.</p>
         ) : (
           <label className="reference-input">
             <span>{getReferenciaLabel(pago.metodoPago)}</span>
-            <input
+            <CommitTextInput
               value={pago.referenciaPago}
-              onChange={(event) => onDetalle({ referenciaPago: event.target.value })}
+              onCommit={(referenciaPago) => onDetalle({ referenciaPago })}
               placeholder={getReferenciaPlaceholder(pago.metodoPago)}
             />
           </label>
         )}
         <ComprobanteAdjuntoInput
-          adjunto={pago.comprobanteAdjunto}
-          onChange={(comprobanteAdjunto) => onDetalle({ comprobanteAdjunto })}
+          adjuntos={comprobantesAdjuntos}
+          onChange={(nextAdjuntos) => onDetalle({ comprobanteAdjunto: nextAdjuntos[0] ?? null, comprobantesAdjuntos: nextAdjuntos })}
         />
       </section>
 
       <label className="note-input">
         <span>Observacion</span>
-        <textarea value={pago.observacion} onChange={(event) => onDetalle({ observacion: event.target.value })} rows={2} />
+        <CommitTextarea value={pago.observacion} onCommit={(observacion) => onDetalle({ observacion })} rows={2} />
       </label>
 
       <footer>
@@ -4289,6 +4397,34 @@ function EmprendimientoModal({
   );
 }
 
+function AttendanceNoteInput({
+  value,
+  disabled,
+  onCommit,
+}: {
+  value: string;
+  disabled: boolean;
+  onCommit: (value: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  return (
+    <input
+      value={draft}
+      disabled={disabled}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== value) onCommit(draft);
+      }}
+      placeholder="Opcional"
+    />
+  );
+}
+
 function AsistenciasPanel({
   reuniones,
   personasPorId,
@@ -4305,6 +4441,7 @@ function AsistenciasPanel({
   onBusqueda,
   onAsistencia,
   onTodosPresentes,
+  savingChanges,
 }: {
   reuniones: Reunion[];
   personasPorId: Map<string, Emprendedor>;
@@ -4321,6 +4458,7 @@ function AsistenciasPanel({
   onBusqueda: (value: string) => void;
   onAsistencia: (reunionId: string, emprendedorId: string, patch: { estado?: EstadoAsistencia; observacion?: string }) => void;
   onTodosPresentes: (reunionId: string) => void;
+  savingChanges: boolean;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [titulo, setTitulo] = useState("");
@@ -4331,6 +4469,34 @@ function AsistenciasPanel({
   const [fotoError, setFotoError] = useState("");
   const [fotoPreview, setFotoPreview] = useState<ReunionFoto | null>(null);
   const [fotoZoom, setFotoZoom] = useState(1);
+  const [reunionDraft, setReunionDraft] = useState({
+    titulo: reunionActiva?.titulo ?? "",
+    fecha: reunionActiva?.fecha ?? today,
+    lugar: reunionActiva?.lugar ?? "",
+    observacion: reunionActiva?.observacion ?? "",
+    acta: reunionActiva?.acta ?? "",
+  });
+
+  useEffect(() => {
+    setReunionDraft({
+      titulo: reunionActiva?.titulo ?? "",
+      fecha: reunionActiva?.fecha ?? today,
+      lugar: reunionActiva?.lugar ?? "",
+      observacion: reunionActiva?.observacion ?? "",
+      acta: reunionActiva?.acta ?? "",
+    });
+  }, [reunionActiva?.id, reunionActiva?.titulo, reunionActiva?.fecha, reunionActiva?.lugar, reunionActiva?.observacion, reunionActiva?.acta, today]);
+
+  const updateReunionDraft = <K extends keyof typeof reunionDraft>(key: K, value: (typeof reunionDraft)[K]) => {
+    setReunionDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const commitReunionField = <K extends keyof typeof reunionDraft>(key: K) => {
+    if (!reunionActiva) return;
+    const value = reunionDraft[key];
+    if (value === reunionActiva[key]) return;
+    onReunion(reunionActiva.id, { [key]: value } as Partial<Omit<Reunion, "id" | "asistencias">>);
+  };
 
   const crear = () => {
     onCrearReunion({
@@ -4425,7 +4591,7 @@ function AsistenciasPanel({
             <span>Acta inicial</span>
             <textarea value={acta} onChange={(event) => setActa(event.target.value)} placeholder="Resumen, acuerdos o temas tratados" rows={3} />
           </label>
-          <button className="primary-button" onClick={crear}>
+          <button className="primary-button" onClick={crear} disabled={savingChanges}>
             <Plus size={18} /> Crear
           </button>
         </div>
@@ -4457,7 +4623,7 @@ function AsistenciasPanel({
                   </div>
                   <div className="meeting-title-actions">
                     <strong>{totals.presente}/{totals.total}</strong>
-                    <button className="danger-icon-button" onClick={eliminarActual} aria-label={`Eliminar ${reunionActiva.titulo}`}>
+                    <button className="danger-icon-button" onClick={eliminarActual} disabled={savingChanges} aria-label={`Eliminar ${reunionActiva.titulo}`}>
                       <Trash2 size={17} />
                     </button>
                   </div>
@@ -4465,26 +4631,27 @@ function AsistenciasPanel({
                 <div className="attendance-edit-grid">
                   <label>
                     <span>Titulo</span>
-                    <input value={reunionActiva.titulo} onChange={(event) => onReunion(reunionActiva.id, { titulo: event.target.value })} />
+                    <input value={reunionDraft.titulo} onChange={(event) => updateReunionDraft("titulo", event.target.value)} onBlur={() => commitReunionField("titulo")} />
                   </label>
                   <label>
                     <span>Fecha</span>
-                    <input type="date" value={reunionActiva.fecha} onChange={(event) => onReunion(reunionActiva.id, { fecha: event.target.value })} />
+                    <input type="date" value={reunionDraft.fecha} onChange={(event) => updateReunionDraft("fecha", event.target.value)} onBlur={() => commitReunionField("fecha")} />
                   </label>
                   <label>
                     <span>Lugar</span>
-                    <input value={reunionActiva.lugar} onChange={(event) => onReunion(reunionActiva.id, { lugar: event.target.value })} />
+                    <input value={reunionDraft.lugar} onChange={(event) => updateReunionDraft("lugar", event.target.value)} onBlur={() => commitReunionField("lugar")} />
                   </label>
                   <label>
                     <span>Nota corta</span>
-                    <input value={reunionActiva.observacion} onChange={(event) => onReunion(reunionActiva.id, { observacion: event.target.value })} />
+                    <input value={reunionDraft.observacion} onChange={(event) => updateReunionDraft("observacion", event.target.value)} onBlur={() => commitReunionField("observacion")} />
                   </label>
                 </div>
                 <label className="attendance-acta">
                   <span>Acta de reunion</span>
                   <textarea
-                    value={reunionActiva.acta}
-                    onChange={(event) => onReunion(reunionActiva.id, { acta: event.target.value })}
+                    value={reunionDraft.acta}
+                    onChange={(event) => updateReunionDraft("acta", event.target.value)}
+                    onBlur={() => commitReunionField("acta")}
                     placeholder="Resumen de la reunion, acuerdos, compromisos y pendientes"
                     rows={5}
                   />
@@ -4542,8 +4709,9 @@ function AsistenciasPanel({
                     {!reunionActiva.fotos.length && <p className="empty-state">Sin fotos de minuta adjuntas.</p>}
                   </div>
                 </section>
-                <button className="mark-all-present-button" onClick={marcarTodos}>
-                  <CheckCircle2 size={17} /> Marcar a todos presentes
+                <button className="mark-all-present-button" onClick={marcarTodos} disabled={savingChanges || totals.total === 0}>
+                  {savingChanges ? <span className="inline-spinner" aria-hidden="true" /> : <CheckCircle2 size={17} />}
+                  {savingChanges ? "Guardando cambios" : "Marcar a todos presentes"}
                 </button>
               </section>
 
@@ -4619,6 +4787,7 @@ function AsistenciasPanel({
                             key={estado}
                             className={asistencia.estado === estado ? "active" : ""}
                             onClick={() => onAsistencia(reunionActiva.id, asistencia.emprendedorId, { estado })}
+                            disabled={savingChanges}
                           >
                             {asistenciaLabels[estado]}
                           </button>
@@ -4627,6 +4796,7 @@ function AsistenciasPanel({
                       {secondaryAttendanceNote && (
                         <button
                           className="representative-button"
+                          disabled={savingChanges}
                           onClick={() =>
                             onAsistencia(reunionActiva.id, asistencia.emprendedorId, {
                               estado: "justificado",
@@ -4639,10 +4809,10 @@ function AsistenciasPanel({
                       )}
                       <label className="attendance-note">
                         <span>Observacion</span>
-                        <input
+                        <AttendanceNoteInput
                           value={asistencia.observacion}
-                          onChange={(event) => onAsistencia(reunionActiva.id, asistencia.emprendedorId, { observacion: event.target.value })}
-                          placeholder="Opcional"
+                          disabled={savingChanges}
+                          onCommit={(observacion) => onAsistencia(reunionActiva.id, asistencia.emprendedorId, { observacion })}
                         />
                       </label>
                     </article>
@@ -5880,6 +6050,7 @@ function CobroEditModal({
     metodoPago: cobro.metodoPago,
     referenciaPago: cobro.referenciaPago,
     comprobanteAdjunto: cobro.comprobanteAdjunto,
+    comprobantesAdjuntos: getComprobantesAdjuntos(cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos),
     observacion: cobro.observacion,
   });
   const [touched, setTouched] = useState(false);
@@ -5887,7 +6058,8 @@ function CobroEditModal({
   const hasInvalidNumbers = [form.cuota, form.seguro, form.montoPagado].some(
     (value) => !Number.isFinite(value) || value < 0,
   );
-  const missingTransferAttachment = transferenciaRequiereAdjunto(form.metodoPago) && !form.comprobanteAdjunto;
+  const comprobantesAdjuntos = getComprobantesAdjuntos(form.comprobanteAdjunto, form.comprobantesAdjuntos);
+  const missingTransferAttachment = transferenciaRequiereAdjunto(form.metodoPago) && !comprobantesAdjuntos.length;
   const hasErrors = hasInvalidNumbers || missingTransferAttachment;
 
   const updateForm = <K extends keyof CobroEditForm>(key: K, value: CobroEditForm[K]) => {
@@ -5927,7 +6099,8 @@ function CobroEditModal({
       fechaPago: montoPagado > 0 ? form.fechaPago || new Date().toISOString().slice(0, 10) : "",
       metodoPago: form.metodoPago,
       referenciaPago: form.metodoPago === "transferencia" ? "" : form.referenciaPago.trim(),
-      comprobanteAdjunto: form.comprobanteAdjunto ?? null,
+      comprobanteAdjunto: comprobantesAdjuntos[0] ?? null,
+      comprobantesAdjuntos,
       observacion: form.observacion.trim(),
       confirmadoPorTesorero: estadoPago === "pagado" && montoPagado >= total && total > 0,
     });
@@ -6013,7 +6186,7 @@ function CobroEditModal({
           </div>
           {form.metodoPago === "transferencia" ? (
             <p className={touched && missingTransferAttachment ? "receipt-help warning" : "receipt-help"}>
-              {missingTransferAttachment ? "Adjunta el comprobante de transferencia antes de guardar." : "Para transferencia basta con el comprobante adjunto."}
+              {missingTransferAttachment ? "Adjunta al menos un comprobante de transferencia antes de guardar." : "Puedes guardar hasta dos comprobantes para este pago."}
             </p>
           ) : (
             <label className="reference-input">
@@ -6027,8 +6200,11 @@ function CobroEditModal({
             </label>
           )}
           <ComprobanteAdjuntoInput
-            adjunto={form.comprobanteAdjunto}
-            onChange={(comprobanteAdjunto) => updateForm("comprobanteAdjunto", comprobanteAdjunto)}
+            adjuntos={comprobantesAdjuntos}
+            onChange={(nextAdjuntos) => {
+              updateForm("comprobanteAdjunto", nextAdjuntos[0] ?? null);
+              updateForm("comprobantesAdjuntos", nextAdjuntos);
+            }}
           />
         </section>
 
@@ -6077,7 +6253,7 @@ function PagoMultipleModal({
   onClose: () => void;
   onSave: (
     ids: string[],
-    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string },
   ) => void | Promise<void>;
 }) {
   const firstPersonaId = defaultPersonaId && personas.some((persona) => persona.id === defaultPersonaId)
@@ -6088,7 +6264,7 @@ function PagoMultipleModal({
   const [fechaPago, setFechaPago] = useState(new Date().toISOString().slice(0, 10));
   const [metodoPago, setMetodoPago] = useState<MetodoPago>("transferencia");
   const [referenciaPago, setReferenciaPago] = useState("");
-  const [comprobanteAdjunto, setComprobanteAdjunto] = useState<ComprobanteAdjunto | undefined>();
+  const [comprobantesAdjuntos, setComprobantesAdjuntos] = useState<ComprobanteAdjunto[]>([]);
   const [observacion, setObservacion] = useState("");
   const [touched, setTouched] = useState(false);
 
@@ -6101,7 +6277,7 @@ function PagoMultipleModal({
     .sort((a, b) => (a.periodo?.numeroCuota ?? 0) - (b.periodo?.numeroCuota ?? 0));
   const selectedCobros = cobrosPersona.filter(({ cobro }) => selectedIds.includes(cobro.id));
   const totalSeleccionado = selectedCobros.reduce((acc, { cobro }) => acc + cobro.totalEsperado, 0);
-  const missingTransferAttachment = transferenciaRequiereAdjunto(metodoPago) && !comprobanteAdjunto;
+  const missingTransferAttachment = transferenciaRequiereAdjunto(metodoPago) && !comprobantesAdjuntos.length;
   const hasErrors = !personaId || !selectedIds.length || !fechaPago || missingTransferAttachment;
   const personaSeleccionada = personas.find((persona) => persona.id === personaId);
   const comprobanteLabel =
@@ -6135,7 +6311,8 @@ function PagoMultipleModal({
       fechaPago,
       metodoPago,
       referenciaPago: metodoPago === "transferencia" ? "" : referenciaPago,
-      comprobanteAdjunto: comprobanteAdjunto ?? null,
+      comprobanteAdjunto: comprobantesAdjuntos[0] ?? null,
+      comprobantesAdjuntos,
       observacion,
     });
   };
@@ -6239,7 +6416,7 @@ function PagoMultipleModal({
             </div>
             {metodoPago === "transferencia" ? (
               <p className={touched && missingTransferAttachment ? "receipt-help warning" : "receipt-help"}>
-                {missingTransferAttachment ? "Adjunta el comprobante de transferencia antes de guardar." : "El comprobante adjunto se copiara en cada cuota seleccionada."}
+                {missingTransferAttachment ? "Adjunta al menos un comprobante de transferencia antes de guardar." : "Hasta dos comprobantes se copiaran en cada cuota seleccionada."}
               </p>
             ) : (
               <label className="reference-input">
@@ -6253,8 +6430,8 @@ function PagoMultipleModal({
               </label>
             )}
             <ComprobanteAdjuntoInput
-              adjunto={comprobanteAdjunto}
-              onChange={(adjunto) => setComprobanteAdjunto(adjunto ?? undefined)}
+              adjuntos={comprobantesAdjuntos}
+              onChange={setComprobantesAdjuntos}
             />
           </section>
 

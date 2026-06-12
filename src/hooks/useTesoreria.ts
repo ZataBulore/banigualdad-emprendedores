@@ -114,6 +114,7 @@ const fieldLabels: Record<string, string> = {
   metodoPago: "metodo de pago",
   referenciaPago: "referencia de pago",
   comprobanteAdjunto: "comprobante adjunto",
+  comprobantesAdjuntos: "comprobantes adjuntos",
   observacion: "observacion",
   confirmadoPorTesorero: "confirmacion tesorero",
   fecha: "fecha",
@@ -193,6 +194,48 @@ const describeChanges = <T extends object>(current: T | undefined, patch: Partia
   return `Cambios realizados: ${changes
     .map((change) => `${change.label}: antes "${normalizeAuditValue(change.before)}", ahora "${normalizeAuditValue(change.after)}"`)
     .join("; ")}.`;
+};
+
+const normalizeComprobantesAdjuntos = (
+  comprobanteAdjunto?: ComprobanteAdjunto | null,
+  comprobantesAdjuntos?: ComprobanteAdjunto[],
+) => {
+  const merged = [...(comprobantesAdjuntos ?? [])];
+  if (comprobanteAdjunto && !merged.some((item) => item.createdAt === comprobanteAdjunto.createdAt && item.nombre === comprobanteAdjunto.nombre)) {
+    merged.unshift(comprobanteAdjunto);
+  }
+
+  return merged.slice(0, 2);
+};
+
+const withNormalizedPaymentAttachments = <T extends { comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[] }>(
+  item: T,
+) => {
+  const comprobantesAdjuntos = normalizeComprobantesAdjuntos(item.comprobanteAdjunto, item.comprobantesAdjuntos);
+
+  return {
+    ...item,
+    comprobanteAdjunto: comprobantesAdjuntos[0] ?? null,
+    comprobantesAdjuntos,
+  };
+};
+
+const normalizePaymentPatch = <T extends { comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[] }>(
+  current: T | undefined,
+  patch: Partial<T>,
+): Partial<T> => {
+  if (!("comprobanteAdjunto" in patch) && !("comprobantesAdjuntos" in patch)) return patch;
+
+  const comprobantesAdjuntos = normalizeComprobantesAdjuntos(
+    patch.comprobanteAdjunto === undefined ? current?.comprobanteAdjunto : patch.comprobanteAdjunto,
+    patch.comprobantesAdjuntos ?? current?.comprobantesAdjuntos,
+  );
+
+  return {
+    ...patch,
+    comprobanteAdjunto: comprobantesAdjuntos[0] ?? null,
+    comprobantesAdjuntos,
+  };
 };
 
 const buildPersonaAuditAction = (persona: Emprendedor | undefined, patch: Partial<Emprendedor>) => {
@@ -337,18 +380,16 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       })),
       ...(state.cobros ?? []).filter((cobro) => !cobrosIniciales.has(cobro.id)),
     ].map((cobro) => ({
-      ...cobro,
+      ...withNormalizedPaymentAttachments(cobro),
       fechaAtraso: cobro.fechaAtraso ?? "",
       referenciaPago: cobro.referenciaPago ?? "",
-      comprobanteAdjunto: cobro.comprobanteAdjunto,
     })),
     pagosCes: state.pagosCes?.length
       ? state.pagosCes.map((pago) => ({
-          ...pago,
+          ...withNormalizedPaymentAttachments(pago),
           fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
           fechaAtraso: pago.fechaAtraso ?? "",
           referenciaPago: pago.referenciaPago ?? "",
-          comprobanteAdjunto: pago.comprobanteAdjunto,
         }))
       : crearPagosCes(state.emprendedores, configuracion),
     emprendimientos: (state.emprendimientos ?? []).map((emprendimiento) => ({
@@ -404,6 +445,7 @@ const crearEstadoOperativoInicial = (current: TesoreriaState): TesoreriaState =>
       metodoPago: "",
       referenciaPago: "",
       comprobanteAdjunto: null,
+      comprobantesAdjuntos: [],
       observacion: "",
       confirmadoPorTesorero: false,
     })),
@@ -592,18 +634,20 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const updateCobro = (id: string, patch: Partial<CobroSemanal>, accion = "Cobro actualizado") => {
     setState((current) => {
       const cobroActual = current.cobros.find((cobro) => cobro.id === id);
+      const normalizedPatch = normalizePaymentPatch(cobroActual, patch);
+      if (!getPatchChanges(cobroActual, normalizedPatch).length) return current;
       const persona = cobroActual ? current.emprendedores.find((item) => item.id === cobroActual.emprendedorId) : undefined;
 
       return withMovimiento({
         ...current,
         cobros: current.cobros.map((cobro) =>
-          cobro.id === id ? { ...cobro, ...patch } : cobro,
+          cobro.id === id ? { ...cobro, ...normalizedPatch } : cobro,
         ),
         updatedAt: new Date().toISOString(),
       }, {
         tipo: "cobro",
         accion,
-        detalle: describeChanges(cobroActual, patch),
+        detalle: describeChanges(cobroActual, normalizedPatch),
         entidadId: id,
         personaId: persona?.id ?? cobroActual?.emprendedorId,
         personaNombre: persona?.nombre,
@@ -614,16 +658,18 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const updateCes = (id: string, patch: Partial<PagoCes>, accion = "Pago CES actualizado") => {
     setState((current) => {
       const pagoActual = current.pagosCes.find((pago) => pago.id === id);
+      const normalizedPatch = normalizePaymentPatch(pagoActual, patch);
+      if (!getPatchChanges(pagoActual, normalizedPatch).length) return current;
       const persona = pagoActual ? current.emprendedores.find((item) => item.id === pagoActual.emprendedorId) : undefined;
 
       return withMovimiento({
         ...current,
-        pagosCes: current.pagosCes.map((pago) => (pago.id === id ? { ...pago, ...patch } : pago)),
+        pagosCes: current.pagosCes.map((pago) => (pago.id === id ? { ...pago, ...normalizedPatch } : pago)),
         updatedAt: new Date().toISOString(),
       }, {
         tipo: "ces",
         accion,
-        detalle: describeChanges(pagoActual, patch),
+        detalle: describeChanges(pagoActual, normalizedPatch),
         entidadId: id,
         personaId: persona?.id ?? pagoActual?.emprendedorId,
         personaNombre: persona?.nombre,
@@ -981,19 +1027,19 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
 
   const actualizarDetalle = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string },
   ) => updateCobro(id, detail, "Detalle de cobro actualizado");
 
   const actualizarCobro = (id: string, patch: Partial<CobroSemanal>) => updateCobro(id, patch, "Cobro editado");
 
   const actualizarDetalleCes = (
     id: string,
-    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
+    detail: { fechaPago?: string; metodoPago?: MetodoPago; referenciaPago?: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string },
   ) => updateCes(id, detail, "Detalle CES actualizado");
 
   const registrarPagoMultiple = (
     ids: string[],
-    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; observacion?: string },
+    detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string },
   ) => {
     const selected = new Set(ids);
 
@@ -1014,7 +1060,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
             fechaPago: detail.fechaPago,
             metodoPago: detail.metodoPago,
             referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
-            comprobanteAdjunto: detail.comprobanteAdjunto ?? null,
+            comprobanteAdjunto: detail.comprobantesAdjuntos?.[0] ?? detail.comprobanteAdjunto ?? null,
+            comprobantesAdjuntos: normalizeComprobantesAdjuntos(detail.comprobanteAdjunto, detail.comprobantesAdjuntos),
             observacion: detail.observacion?.trim() || cobro.observacion,
             confirmadoPorTesorero: true,
           };
@@ -1065,6 +1112,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const updateReunion = (id: string, patch: Partial<Omit<Reunion, "id" | "asistencias">>) => {
     setState((current) => {
       const reunion = current.reuniones.find((item) => item.id === id);
+      if (!getPatchChanges(reunion, patch).length) return current;
 
       return withMovimiento({
         ...current,
@@ -1107,6 +1155,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       const reunion = current.reuniones.find((item) => item.id === reunionId);
       const persona = current.emprendedores.find((item) => item.id === emprendedorId);
       const asistenciaActual = reunion?.asistencias.find((asistencia) => asistencia.emprendedorId === emprendedorId);
+      if (!getPatchChanges(asistenciaActual, patch).length) return current;
 
       return withMovimiento({
         ...current,
@@ -1135,6 +1184,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const marcarTodosPresentes = (reunionId: string) => {
     setState((current) => {
       const reunion = current.reuniones.find((item) => item.id === reunionId);
+      if (reunion && reunion.asistencias.every((asistencia) => asistencia.estado === "presente")) return current;
 
       return withMovimiento({
         ...current,

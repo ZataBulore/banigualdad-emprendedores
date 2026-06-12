@@ -965,6 +965,31 @@ label.secondary-button:hover,
   color: #c9342b;
 }
 
+.sync-activity {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 149, 0, 0.28);
+  border-radius: 999px;
+  background: #fff7e8;
+  color: #8a5200;
+  padding: 0 12px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
+  font-size: 0.78rem;
+}
+
+.sync-activity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .section-cobros {
   --section-accent: #007aff;
   --section-soft: #e8f2ff;
@@ -3892,9 +3917,14 @@ label.secondary-button:hover,
   gap: 7px;
 }
 
+.attachment-stack {
+  display: grid;
+  gap: 7px;
+}
+
 .attachment-card {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   border: 1px solid rgba(52, 199, 89, 0.24);
@@ -3902,6 +3932,10 @@ label.secondary-button:hover,
   background: #f0fbf3;
   color: #248a3d;
   padding: 8px;
+}
+
+.attachment-card.empty {
+  grid-template-columns: auto 1fr;
 }
 
 .attachment-card.empty {
@@ -3931,6 +3965,13 @@ label.secondary-button:hover,
   font-weight: 700;
 }
 
+.attachment-card .secondary-button,
+.attachment-card .danger-button {
+  min-height: 30px;
+  padding-inline: 8px;
+  font-size: 0.72rem;
+}
+
 .attachment-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
@@ -3951,6 +3992,14 @@ label.secondary-button:hover,
 .secondary-button.disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .inline-spinner {
