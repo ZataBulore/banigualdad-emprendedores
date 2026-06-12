@@ -2445,11 +2445,18 @@ const getWeatherDescription = (code: number) => {
 };
 
 const getWeatherIcon = (weather?: NegreteWeather) => {
-  if (!weather) return <Cloud size={21} />;
+  const iconProps = {
+    className: "weather-icon",
+    size: 18,
+    strokeWidth: 2.35,
+    "aria-hidden": true,
+  };
+
+  if (!weather) return <Cloud {...iconProps} />;
   if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(weather.code)) {
-    return <CloudRain size={21} />;
+    return <CloudRain {...iconProps} />;
   }
-  return weather.isDay ? <CloudSun size={21} /> : <Cloud size={21} />;
+  return weather.isDay ? <CloudSun {...iconProps} /> : <Cloud {...iconProps} />;
 };
 
 function NegreteWeatherPill() {
@@ -2506,7 +2513,7 @@ function NegreteWeatherPill() {
         aria-label={`Ver detalle del clima de Negrete: ${temperatureLabel}`}
         title="Clima de Negrete"
       >
-        {getWeatherIcon(weather ?? undefined)}
+        <span className="weather-icon-shell">{getWeatherIcon(weather ?? undefined)}</span>
         <strong>{temperatureLabel}</strong>
       </button>
 
@@ -2521,7 +2528,7 @@ function NegreteWeatherPill() {
           >
             <header>
               <div className="weather-modal-title">
-                <span>{getWeatherIcon(weather ?? undefined)}</span>
+                <span className="weather-modal-icon">{getWeatherIcon(weather ?? undefined)}</span>
                 <div>
                   <p className="eyebrow">Clima en Negrete</p>
                   <h2>

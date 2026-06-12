@@ -347,28 +347,45 @@ label.secondary-button:hover,
 .weather-pill {
   display: inline-flex;
   width: auto;
-  min-width: 60px;
-  height: 30px;
-  min-height: 30px;
+  min-width: 66px;
+  height: 32px;
+  min-height: 32px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   border: 1px solid rgba(8, 113, 91, 0.16);
   border-radius: 999px;
   background: rgba(232, 246, 236, 0.92);
   color: #08715b;
-  padding: 0 8px;
+  padding: 0 9px 0 7px;
   box-shadow: none;
   line-height: 1;
+  overflow: visible;
   vertical-align: middle;
 }
 
-.weather-pill svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+.weather-icon-shell,
+.weather-modal-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: visible;
+}
+
+.weather-icon-shell {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+}
+
+.weather-icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
   display: block;
+  overflow: visible;
+  stroke: currentColor;
 }
 
 .weather-pill strong {
@@ -383,17 +400,21 @@ label.secondary-button:hover,
 }
 
 .auth-session .weather-pill {
-  height: 25px;
-  min-height: 25px;
-  min-width: 54px;
+  height: 28px;
+  min-height: 28px;
+  min-width: 62px;
   background: var(--section-soft);
-  padding: 0 7px;
+  padding: 0 8px 0 6px;
 }
 
-.auth-session .weather-pill svg {
-  width: 14px;
-  height: 14px;
-  flex-basis: 14px;
+.auth-session .weather-icon-shell {
+  width: 18px;
+  height: 18px;
+}
+
+.auth-session .weather-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .auth-session .weather-pill strong {
@@ -442,7 +463,7 @@ label.secondary-button:hover,
   justify-content: space-between;
 }
 
-.weather-modal-title > span {
+.weather-modal-icon {
   display: grid;
   width: 42px;
   height: 42px;
@@ -451,6 +472,11 @@ label.secondary-button:hover,
   border-radius: 12px;
   background: #e8f6ec;
   color: #08715b;
+}
+
+.weather-modal-icon .weather-icon {
+  width: 24px;
+  height: 24px;
 }
 
 .weather-modal h2 {
@@ -1207,7 +1233,7 @@ label.secondary-button:hover,
 }
 
 .auth-avatar svg,
-.auth-session button svg {
+.auth-session button:not(.weather-pill) svg {
   width: 14px;
   height: 14px;
 }
