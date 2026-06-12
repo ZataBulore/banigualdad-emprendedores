@@ -344,6 +344,85 @@ label.secondary-button:hover,
   color: var(--section-accent);
 }
 
+.weather-widget {
+  display: grid;
+  width: min(1160px, calc(100% - 28px));
+  margin: 0 auto;
+  gap: 10px;
+  border: 1px solid rgba(34, 48, 44, 0.1);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(232, 246, 236, 0.96), rgba(255, 255, 255, 0.96)),
+    #ffffff;
+  box-shadow: var(--shadow);
+  padding: 13px 14px;
+}
+
+.weather-widget.compact {
+  width: 100%;
+  margin: 8px 0 10px;
+  border-color: color-mix(in srgb, var(--section-accent) 18%, var(--line-soft));
+  background: var(--surface);
+}
+
+.weather-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.weather-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  background: #e8f6ec;
+  color: #08715b;
+}
+
+.weather-main h2 {
+  margin: 2px 0 3px;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.15;
+}
+
+.weather-main span:not(.weather-icon),
+.weather-widget small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.weather-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.weather-metrics span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(8, 113, 91, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 8px 9px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.weather-metrics svg {
+  flex: 0 0 auto;
+  color: #08715b;
+}
+
 .public-news-section {
   width: min(1160px, 100%);
   margin: 0 auto;
@@ -4890,6 +4969,19 @@ textarea:disabled {
 @media (min-width: 720px) {
   body {
     font-size: 15px;
+  }
+
+  .weather-widget {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.1fr);
+    align-items: center;
+  }
+
+  .weather-widget small {
+    grid-column: 1 / -1;
+  }
+
+  .weather-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .public-hero {

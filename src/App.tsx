@@ -10,7 +10,10 @@ import {
   Clipboard,
   Cloud,
   CloudOff,
+  CloudRain,
+  CloudSun,
   Download,
+  Droplets,
   ExternalLink,
   Eye,
   FileImage,
@@ -34,10 +37,12 @@ import {
   SlidersHorizontal,
   Sprout,
   Store,
+  Thermometer,
   Trash2,
   Upload,
   Users,
   WalletCards,
+  Wind,
   X,
   ZoomIn,
   ZoomOut,
@@ -96,6 +101,12 @@ const IMAGE_EXTENSION_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/
 const NEGRETE_NEWS_API_URL =
   String(import.meta.env.VITE_NEWS_API_URL ?? "").trim() ||
   "https://www.muninegrete.cl/wp-json/wp/v2/posts?per_page=8&_fields=id,date,title,excerpt,link";
+const NEGRETE_LATITUDE = -37.58668;
+const NEGRETE_LONGITUDE = -72.52833;
+const NEGRETE_WEATHER_API_URL =
+  `https://api.open-meteo.com/v1/forecast?latitude=${NEGRETE_LATITUDE}&longitude=${NEGRETE_LONGITUDE}` +
+  "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m" +
+  "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FSantiago&forecast_days=1";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -1792,6 +1803,8 @@ function App() {
         </section>
       )}
 
+      <NegreteWeatherWidget compact />
+
       <section className="summary-grid">
         <SummaryCard icon={<CircleDollarSign />} label="Esperado" value={formatCurrency(totals.esperado)} />
         <SummaryCard icon={<CheckCircle2 />} label="Pagado" value={formatCurrency(totals.pagado)} tone="success" />
@@ -2347,6 +2360,38 @@ type NegreteNewsPost = {
   excerpt: string;
 };
 
+type NegreteWeatherResponse = {
+  current?: {
+    time?: string;
+    temperature_2m?: number;
+    apparent_temperature?: number;
+    relative_humidity_2m?: number;
+    precipitation?: number;
+    weather_code?: number;
+    wind_speed_10m?: number;
+    is_day?: number;
+  };
+  daily?: {
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_probability_max?: number[];
+  };
+};
+
+type NegreteWeather = {
+  updatedAt: string;
+  temperature: number;
+  apparent: number;
+  humidity: number;
+  precipitation: number;
+  wind: number;
+  code: number;
+  isDay: boolean;
+  max: number;
+  min: number;
+  rainChance: number;
+};
+
 const decodeHtmlText = (value = "") => {
   if (typeof document === "undefined") return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   const element = document.createElement("textarea");
@@ -2378,6 +2423,104 @@ const shuffleNewsPosts = (posts: NegreteNewsPost[]) => {
   const seed = dailyNewsSeed();
   return [...posts].sort((a, b) => hashNewsKey(`${seed}-${a.id}`) - hashNewsKey(`${seed}-${b.id}`));
 };
+
+const formatWeatherNumber = (value: number, suffix = "") =>
+  Number.isFinite(value) ? `${Math.round(value)}${suffix}` : "Sin dato";
+
+const getWeatherDescription = (code: number) => {
+  if (code === 0) return "Despejado";
+  if ([1, 2].includes(code)) return "Parcialmente nublado";
+  if (code === 3) return "Nublado";
+  if ([45, 48].includes(code)) return "Neblina";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Llovizna";
+  if ([61, 63, 65, 66, 67].includes(code)) return "Lluvia";
+  if ([80, 81, 82].includes(code)) return "Chubascos";
+  if ([95, 96, 99].includes(code)) return "Tormenta";
+  return "Clima variable";
+};
+
+const getWeatherIcon = (weather?: NegreteWeather) => {
+  if (!weather) return <Cloud size={21} />;
+  if ([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(weather.code)) {
+    return <CloudRain size={21} />;
+  }
+  return weather.isDay ? <CloudSun size={21} /> : <Cloud size={21} />;
+};
+
+function NegreteWeatherWidget({ compact = false }: { compact?: boolean }) {
+  const [weather, setWeather] = useState<NegreteWeather | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+
+    fetch(NEGRETE_WEATHER_API_URL, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("No se pudo cargar el clima de Negrete.");
+        return response.json() as Promise<NegreteWeatherResponse>;
+      })
+      .then((data) => {
+        if (!data.current) throw new Error("La respuesta de clima no trae datos actuales.");
+        setWeather({
+          updatedAt: data.current.time ?? "",
+          temperature: Number(data.current.temperature_2m ?? NaN),
+          apparent: Number(data.current.apparent_temperature ?? NaN),
+          humidity: Number(data.current.relative_humidity_2m ?? NaN),
+          precipitation: Number(data.current.precipitation ?? 0),
+          wind: Number(data.current.wind_speed_10m ?? NaN),
+          code: Number(data.current.weather_code ?? NaN),
+          isDay: Boolean(data.current.is_day),
+          max: Number(data.daily?.temperature_2m_max?.[0] ?? NaN),
+          min: Number(data.daily?.temperature_2m_min?.[0] ?? NaN),
+          rainChance: Number(data.daily?.precipitation_probability_max?.[0] ?? NaN),
+        });
+        setStatus("ready");
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStatus("error");
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  const updatedAtLabel = weather?.updatedAt ? formatDateTime(weather.updatedAt) : "";
+
+  return (
+    <section className={compact ? "weather-widget compact" : "weather-widget"} aria-label="Clima de Negrete">
+      <div className="weather-main">
+        <span className="weather-icon">{getWeatherIcon(weather ?? undefined)}</span>
+        <div>
+          <p className="eyebrow">Clima en Negrete</p>
+          <h2>
+            {status === "ready" && weather
+              ? `${formatWeatherNumber(weather.temperature, "°C")} · ${getWeatherDescription(weather.code)}`
+              : status === "loading" ? "Actualizando clima..." : "Clima no disponible"}
+          </h2>
+          <span>
+            {status === "ready" && weather
+              ? `Sensacion ${formatWeatherNumber(weather.apparent, "°C")} · Max ${formatWeatherNumber(weather.max, "°")} / Min ${formatWeatherNumber(weather.min, "°")}`
+              : "Fuente gratuita Open-Meteo para la zona de Negrete."}
+          </span>
+        </div>
+      </div>
+
+      {status === "ready" && weather && (
+        <div className="weather-metrics">
+          <span><Droplets size={15} /> Humedad {formatWeatherNumber(weather.humidity, "%")}</span>
+          <span><CloudRain size={15} /> Lluvia {formatWeatherNumber(weather.rainChance, "%")}</span>
+          <span><Wind size={15} /> Viento {formatWeatherNumber(weather.wind, " km/h")}</span>
+          <span><Thermometer size={15} /> Ahora {formatWeatherNumber(weather.temperature, "°C")}</span>
+        </div>
+      )}
+
+      <small>
+        {status === "ready" && updatedAtLabel ? `Actualizado ${updatedAtLabel} · Datos: Open-Meteo.` : "Datos: Open-Meteo."}
+      </small>
+    </section>
+  );
+}
 
 function PublicNewsCarousel() {
   const [posts, setPosts] = useState<NegreteNewsPost[]>([]);
@@ -2596,6 +2739,8 @@ function PublicHome({
               <span><Store size={16} /> Productos, servicios y oficios locales</span>
             </div>
           </section>
+
+          <NegreteWeatherWidget />
 
           <PublicNewsCarousel />
 
