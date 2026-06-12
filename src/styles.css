@@ -4400,6 +4400,20 @@ label.secondary-button:hover,
   font-weight: 700;
 }
 
+.attachment-card.unavailable {
+  border-color: rgba(138, 82, 0, 0.3);
+  background: #fffaf1;
+}
+
+.attachment-missing {
+  display: block;
+  margin-top: 6px;
+  color: #8a5200;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .attachment-card .storage-provider {
   display: inline-flex;
   width: fit-content;

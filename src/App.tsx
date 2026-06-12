@@ -3456,27 +3456,16 @@ function ComprobanteAdjuntoInput({
     <div className="attachment-control">
       <div className="attachment-stack">
         {currentAdjuntos.map((adjunto, index) => (
-          <div className="attachment-card" key={getComprobanteKey(adjunto)}>
-            <FileImage size={17} />
-            <div>
-              <strong>{index + 1}. {adjunto.nombre}</strong>
-              <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
-              <small className={`storage-provider ${adjunto.dataUrl || adjunto.storageProvider === "firebase" ? "firebase" : "local"}`}>
-                {getAttachmentProviderLabel(adjunto)}
-              </small>
-            </div>
-            <div className="attachment-card-actions">
-              <button type="button" className="secondary-button compact" onClick={() => {
-                setZoom(1);
-                setPreviewAdjunto(adjunto);
-              }}>
-                <Eye size={16} /> Ver
-              </button>
-              <button type="button" className="danger-button compact" onClick={() => void handleRemove(adjunto)}>
-                <Trash2 size={16} /> Quitar
-              </button>
-            </div>
-          </div>
+          <AttachmentCard
+            adjunto={adjunto}
+            index={index}
+            key={getComprobanteKey(adjunto)}
+            onPreview={() => {
+              setZoom(1);
+              setPreviewAdjunto(adjunto);
+            }}
+            onRemove={() => void handleRemove(adjunto)}
+          />
         ))}
         {!currentAdjuntos.length && (
           <div className="attachment-card empty">
@@ -3541,6 +3530,47 @@ function ComprobanteAdjuntoInput({
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+function AttachmentCard({
+  adjunto,
+  index,
+  onPreview,
+  onRemove,
+}: {
+  adjunto: ComprobanteAdjunto;
+  index: number;
+  onPreview: () => void;
+  onRemove: () => void;
+}) {
+  const source = getAttachmentSource(adjunto);
+  const isAvailable = Boolean(source);
+
+  return (
+    <div className={isAvailable ? "attachment-card" : "attachment-card unavailable"}>
+      <FileImage size={17} />
+      <div>
+        <strong>{index + 1}. {adjunto.nombre}</strong>
+        <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
+        <small className={`storage-provider ${adjunto.dataUrl || adjunto.storageProvider === "firebase" ? "firebase" : "local"}`}>
+          {getAttachmentProviderLabel(adjunto)}
+        </small>
+        {!isAvailable && (
+          <small className="attachment-missing">
+            Este registro conserva el nombre del comprobante, pero el archivo debe adjuntarse nuevamente.
+          </small>
+        )}
+      </div>
+      <div className="attachment-card-actions">
+        <button type="button" className="secondary-button compact" onClick={onPreview} disabled={!isAvailable}>
+          <Eye size={16} /> Ver
+        </button>
+        <button type="button" className="danger-button compact" onClick={onRemove}>
+          <Trash2 size={16} /> Quitar
+        </button>
+      </div>
     </div>
   );
 }
