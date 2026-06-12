@@ -40,16 +40,15 @@ import {
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTesoreria } from "./hooks/useTesoreria";
+import { cloudBackendName, getCloudMissingConfig, isCloudConfigured } from "./services/cloudState";
 import {
-  getFirebaseMissingConfig,
   isFirebaseConfigured,
-  createSolicitudEmprendimiento,
   signInFirebaseWithGoogle,
   signOutFirebase,
   subscribeFirebaseAuthState,
-  subscribeSolicitudesEmprendimiento,
-  updateSolicitudEmprendimiento,
 } from "./services/firebase";
+import { isSupabaseConfigured, uploadSupabaseAsset, uploadSupabaseComprobante } from "./services/supabase";
+import { createSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
 import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
@@ -113,7 +112,7 @@ const asistenciaOptions: EstadoAsistencia[] = ["presente", "ausente", "justifica
 const cloudStatusLabels = {
   local: "Modo local",
   connecting: "Conectando nube",
-  synced: "Firebase activo",
+  synced: "Nube activa",
   saving: "Guardando nube",
   error: "Error nube",
 } as const;
@@ -391,6 +390,14 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const dataUrlToBlob = async (dataUrl: string) => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
+  adjunto.url || adjunto.dataUrl || "";
+
 const isImageFile = (file: File) =>
   file.type.startsWith("image/") || IMAGE_EXTENSION_PATTERN.test(file.name);
 
@@ -442,7 +449,18 @@ const compressImageFile = async (file: File) => {
 const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto> => {
   if (isImageFile(file)) {
     const image = await compressImageFile(file);
-    return { ...image, createdAt: new Date().toISOString() };
+    const createdAt = new Date().toISOString();
+    const uploaded = isSupabaseConfigured
+      ? await uploadSupabaseComprobante(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo)
+      : null;
+
+    return {
+      nombre: image.nombre,
+      tipo: image.tipo,
+      tamano: image.tamano,
+      createdAt,
+      ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
+    };
   }
 
   if (file.type !== "application/pdf") {
@@ -453,12 +471,17 @@ const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto>
     throw new Error(`El PDF supera ${formatFileSize(MAX_COMPROBANTE_BYTES)}. Sube una version mas liviana o una captura.`);
   }
 
+  const dataUrl = await readFileAsDataUrl(file);
+  const uploaded = isSupabaseConfigured
+    ? await uploadSupabaseComprobante(file.name, file, file.type)
+    : null;
+
   return {
     nombre: file.name,
     tipo: file.type,
-    dataUrl: await readFileAsDataUrl(file),
     tamano: file.size,
     createdAt: new Date().toISOString(),
+    ...(uploaded ?? { dataUrl, storageProvider: "local" as const }),
   };
 };
 
@@ -468,10 +491,17 @@ const createEmprendimientoFoto = async (file: File): Promise<EmprendimientoFoto>
   }
 
   const image = await compressImageFile(file);
+  const uploaded = isSupabaseConfigured
+    ? await uploadSupabaseAsset(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo, "emprendimientos")
+    : null;
+
   return {
     id: `foto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    ...image,
+    nombre: image.nombre,
+    tipo: image.tipo,
+    tamano: image.tamano,
     createdAt: new Date().toISOString(),
+    ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
   };
 };
 
@@ -481,10 +511,17 @@ const createReunionFoto = async (file: File): Promise<ReunionFoto> => {
   }
 
   const image = await compressImageFile(file);
+  const uploaded = isSupabaseConfigured
+    ? await uploadSupabaseAsset(image.nombre, await dataUrlToBlob(image.dataUrl), image.tipo, "reuniones")
+    : null;
+
   return {
     id: `minuta-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    ...image,
+    nombre: image.nombre,
+    tipo: image.tipo,
+    tamano: image.tamano,
     createdAt: new Date().toISOString(),
+    ...(uploaded ?? { dataUrl: image.dataUrl, storageProvider: "local" as const }),
   };
 };
 
@@ -1742,7 +1779,7 @@ function App() {
       {(cloudStatus === "saving" || cloudStatus === "connecting") && (
         <div className={`sync-activity ${cloudStatus}`} role="status" aria-live="polite">
           <span className="inline-spinner" aria-hidden="true" />
-          <strong>{cloudStatus === "saving" ? "Guardando cambios en Firebase" : "Reconectando con Firebase"}</strong>
+          <strong>{cloudStatus === "saving" ? `Guardando cambios en ${cloudBackendName}` : `Reconectando con ${cloudBackendName}`}</strong>
         </div>
       )}
       {cloudStatus === "error" && cloudError && (
@@ -2367,7 +2404,7 @@ function PublicEmprendimientoCard({
   return (
     <article className="public-venture-card">
       <div className="public-venture-media">
-        {foto ? <img src={foto.dataUrl} alt={emprendimiento.nombre} /> : <Store size={34} />}
+        {foto ? <img src={getAttachmentSource(foto)} alt={emprendimiento.nombre} /> : <Store size={34} />}
       </div>
       <div className="public-venture-content">
         <p className="eyebrow">{emprendimiento.rubro || "Emprendimiento"}</p>
@@ -2712,12 +2749,12 @@ function PublicEmprendimientoForm({
           {fotoLoading ? "Redimensionando fotos" : "Agregar fotos"}
           <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={fotoLoading || form.fotos.length >= 3} onChange={handleFotos} />
         </label>
-        {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en Firebase.</small>}
+        {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en la nube.</small>}
         {fotoError && <small className="attachment-error">{fotoError}</small>}
         <div className="public-photo-preview">
           {form.fotos.map((foto) => (
             <figure key={foto.id}>
-              <img src={foto.dataUrl} alt={foto.nombre} />
+              <img src={getAttachmentSource(foto)} alt={foto.nombre} />
               <button type="button" className="danger-icon-button" onClick={() => updateForm("fotos", form.fotos.filter((item) => item.id !== foto.id))} aria-label={`Quitar ${foto.nombre}`}>
                 <Trash2 size={15} />
               </button>
@@ -2995,7 +3032,7 @@ function ComprobanteAdjuntoInput({
           />
         </label>
         <small className="attachment-help">
-          {loading ? "Preparando archivo optimizado para sincronizar en Firebase." : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
+          {loading ? "Preparando archivo optimizado para sincronizar en la nube." : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
         </small>
       </div>
       {error && <small className="attachment-error">{error}</small>}
@@ -3022,15 +3059,15 @@ function ComprobanteAdjuntoInput({
                   <ZoomIn size={18} />
                 </button>
               </div>
-              <a className="secondary-button" href={previewAdjunto.dataUrl} download={previewAdjunto.nombre}>
+              <a className="secondary-button" href={getAttachmentSource(previewAdjunto)} download={previewAdjunto.nombre}>
                 <Download size={16} /> Descargar
               </a>
             </div>
             <div className="preview-stage">
               {previewAdjunto.tipo.startsWith("image/") ? (
-                <img src={previewAdjunto.dataUrl} alt={`Comprobante ${previewAdjunto.nombre}`} style={{ transform: `scale(${zoom})` }} />
+                <img src={getAttachmentSource(previewAdjunto)} alt={`Comprobante ${previewAdjunto.nombre}`} style={{ transform: `scale(${zoom})` }} />
               ) : (
-                <iframe title={`Comprobante ${previewAdjunto.nombre}`} src={previewAdjunto.dataUrl} style={{ transform: `scale(${zoom})` }} />
+                <iframe title={`Comprobante ${previewAdjunto.nombre}`} src={getAttachmentSource(previewAdjunto)} style={{ transform: `scale(${zoom})` }} />
               )}
             </div>
           </section>
@@ -3880,7 +3917,7 @@ function EmprendimientoCard({
     <article className={`venture-card ${emprendimiento.estado}`}>
       <div className="venture-photo">
         {fotoPrincipal ? (
-          <img src={fotoPrincipal.dataUrl} alt={emprendimiento.nombre} />
+          <img src={getAttachmentSource(fotoPrincipal)} alt={emprendimiento.nombre} />
         ) : (
           <Store size={32} />
         )}
@@ -3935,7 +3972,7 @@ function EmprendimientoCard({
         {emprendimiento.fotos.length > 1 && (
           <div className="venture-thumbs" aria-label="Fotos del emprendimiento">
             {emprendimiento.fotos.slice(1).map((foto) => (
-              <img key={foto.id} src={foto.dataUrl} alt={foto.nombre} />
+              <img key={foto.id} src={getAttachmentSource(foto)} alt={foto.nombre} />
             ))}
           </div>
         )}
@@ -4143,7 +4180,7 @@ function SolicitudRevisionModal({
           <div>
             {form.fotos.map((foto) => (
               <figure key={foto.id}>
-                <img src={foto.dataUrl} alt={foto.nombre} />
+                <img src={getAttachmentSource(foto)} alt={foto.nombre} />
                 <figcaption>{foto.nombre}</figcaption>
               </figure>
             ))}
@@ -4370,12 +4407,12 @@ function EmprendimientoModal({
               />
             </label>
           </div>
-          {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en Firebase.</small>}
+          {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en la nube.</small>}
           {fotoError && <small className="attachment-error">{fotoError}</small>}
           <div className="venture-photo-list">
             {form.fotos.map((foto) => (
               <figure key={foto.id}>
-                <img src={foto.dataUrl} alt={foto.nombre} />
+                <img src={getAttachmentSource(foto)} alt={foto.nombre} />
                 <figcaption>
                   <span>{foto.nombre}</span>
                   <button type="button" className="danger-icon-button" onClick={() => quitarFoto(foto.id)} aria-label={`Quitar ${foto.nombre}`}>
@@ -4699,7 +4736,7 @@ function AsistenciasPanel({
                           }}
                           aria-label={`Ver ${foto.nombre}`}
                         >
-                          <img src={foto.dataUrl} alt={`Minuta ${foto.nombre}`} />
+                          <img src={getAttachmentSource(foto)} alt={`Minuta ${foto.nombre}`} />
                         </button>
                         <figcaption>
                           <span>{foto.nombre}</span>
@@ -4750,12 +4787,12 @@ function AsistenciasPanel({
                           <ZoomIn size={18} />
                         </button>
                       </div>
-                      <a className="secondary-button" href={fotoPreview.dataUrl} download={fotoPreview.nombre}>
+                      <a className="secondary-button" href={getAttachmentSource(fotoPreview)} download={fotoPreview.nombre}>
                         <Download size={16} /> Descargar
                       </a>
                     </div>
                     <div className="preview-stage">
-                      <img src={fotoPreview.dataUrl} alt={`Minuta ${fotoPreview.nombre}`} style={{ transform: `scale(${fotoZoom})` }} />
+                      <img src={getAttachmentSource(fotoPreview)} alt={`Minuta ${fotoPreview.nombre}`} style={{ transform: `scale(${fotoZoom})` }} />
                     </div>
                   </section>
                 </div>
@@ -4927,9 +4964,9 @@ function ConfigPanel({
         </div>
         <p className="config-note">
           {cloudError ||
-            (isFirebaseConfigured
-              ? "Firebase esta configurado. Los cambios del sistema se guardan en la nube automaticamente."
-              : `Faltan variables Firebase: ${getFirebaseMissingConfig().join(", ")}.`)}
+            (isCloudConfigured
+              ? `${cloudBackendName} esta configurado. Los cambios del sistema se guardan en la nube automaticamente.`
+              : `Faltan variables de nube: ${getCloudMissingConfig().join(", ")}.`)}
         </p>
       </section>
 
@@ -5320,7 +5357,7 @@ function MicrocreditoModal({
     setTouched(true);
     if (hasErrors) return;
 
-    const confirmed = await confirmarAccionCritica("Guardar cambios en las reglas de microcredito? Esta accion quedara registrada en auditoria y se sincronizara con Firebase.", {
+    const confirmed = await confirmarAccionCritica(`Guardar cambios en las reglas de microcredito? Esta accion quedara registrada en auditoria y se sincronizara con ${cloudBackendName}.`, {
       title: "Semilla Emprende Negrete confirma",
       tone: "warning",
       confirmLabel: "Guardar reglas",

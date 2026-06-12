@@ -81,7 +81,10 @@ export interface Emprendedor {
 export interface ComprobanteAdjunto {
   nombre: string;
   tipo: string;
-  dataUrl: string;
+  dataUrl?: string;
+  url?: string;
+  storagePath?: string;
+  storageProvider?: "supabase" | "firebase" | "local";
   tamano: number;
   createdAt: string;
 }
@@ -92,7 +95,10 @@ export interface EmprendimientoFoto {
   id: string;
   nombre: string;
   tipo: string;
-  dataUrl: string;
+  dataUrl?: string;
+  url?: string;
+  storagePath?: string;
+  storageProvider?: "supabase" | "firebase" | "local";
   tamano: number;
   createdAt: string;
 }
@@ -211,7 +217,10 @@ export interface ReunionFoto {
   id: string;
   nombre: string;
   tipo: string;
-  dataUrl: string;
+  dataUrl?: string;
+  url?: string;
+  storagePath?: string;
+  storageProvider?: "supabase" | "firebase" | "local";
   tamano: number;
   createdAt: string;
 }

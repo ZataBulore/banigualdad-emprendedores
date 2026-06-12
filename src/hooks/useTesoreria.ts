@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { configuracionInicial, crearPagosCes, getMontoCes, tesoreriaInicial } from "../data/tesoreriaInicial";
 import {
-  getFirebaseMissingConfig,
-  isFirebaseConfigured,
+  cloudBackendName,
+  getCloudMissingConfig,
+  isCloudConfigured,
   readRemoteState,
   saveRemoteState,
   subscribeRemoteState,
-} from "../services/firebase";
+} from "../services/cloudState";
 import type {
   Centro,
   CobroSemanal,
@@ -39,6 +40,10 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
   if (normalized.includes("resource-exhausted") || normalized.includes("quota limit exceeded")) {
     return "Firebase rechazo el guardado porque se agoto la cuota diaria gratuita de escrituras de Firestore. El cambio quedo guardado en este equipo y se podra sincronizar cuando la cuota se restablezca o se habilite billing en Firebase.";
+  }
+
+  if (normalized.includes("supabase") && (normalized.includes("storage") || normalized.includes("bucket"))) {
+    return "Supabase no pudo guardar el archivo. Revisa que el bucket de comprobantes exista y permita subida desde la app.";
   }
 
   return message;
@@ -469,10 +474,10 @@ const crearEstadoOperativoInicial = (current: TesoreriaState): TesoreriaState =>
 export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled?: boolean; updatedBy?: string } = {}) => {
   const [state, setState] = useState<TesoreriaState>(loadState);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(
-    isFirebaseConfigured ? "connecting" : "local",
+    isCloudConfigured ? "connecting" : "local",
   );
   const [cloudError, setCloudError] = useState("");
-  const [cloudReady, setCloudReady] = useState(!isFirebaseConfigured);
+  const [cloudReady, setCloudReady] = useState(!isCloudConfigured);
   const applyingRemoteRef = useRef(false);
   const remoteReadyRef = useRef(false);
   const saveTimeoutRef = useRef<number | null>(null);
@@ -486,9 +491,9 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   }, [state]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured) {
+    if (!isCloudConfigured) {
       setCloudStatus("local");
-      setCloudError(`Faltan variables Firebase: ${getFirebaseMissingConfig().join(", ")}.`);
+      setCloudError(`Faltan variables de nube: ${getCloudMissingConfig().join(", ")}.`);
       setCloudReady(true);
       remoteReadyRef.current = false;
       return;
@@ -509,7 +514,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         })
         .catch((error) => {
           setCloudStatus("error");
-          setCloudError(error instanceof Error ? error.message : "No se pudo leer la vitrina desde Firebase.");
+          setCloudError(error instanceof Error ? error.message : `No se pudo leer la vitrina desde ${cloudBackendName}.`);
           setCloudReady(true);
         });
       remoteReadyRef.current = false;
@@ -518,7 +523,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
 
     if (!options.syncEnabled) {
       setCloudStatus("connecting");
-      setCloudError("Inicia sesion con Google para activar la sincronizacion con Firebase.");
+      setCloudError(`Inicia sesion con Google para activar la sincronizacion con ${cloudBackendName}.`);
       setCloudReady(false);
       remoteReadyRef.current = false;
       return;
@@ -546,7 +551,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       .catch((error) => {
         if (cancelled) return;
         setCloudStatus("error");
-        setCloudError(getErrorMessage(error, "No se pudo conectar con Firebase."));
+        setCloudError(getErrorMessage(error, `No se pudo conectar con ${cloudBackendName}.`));
         setCloudReady(false);
       });
 
@@ -561,12 +566,12 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       (message) => {
         if (isTransientFirebaseMessage(message)) {
           setCloudStatus("connecting");
-          setCloudError("Firebase esta reconectando. Los cambios se conservan localmente y se sincronizaran al recuperar la conexion.");
+          setCloudError(`${cloudBackendName} esta reconectando. Los cambios se conservan localmente y se sincronizaran al recuperar la conexion.`);
           return;
         }
 
         setCloudStatus("error");
-        setCloudError(getErrorMessage(new Error(message), "No se pudo sincronizar con Firebase."));
+        setCloudError(getErrorMessage(new Error(message), `No se pudo sincronizar con ${cloudBackendName}.`));
       },
     );
 
@@ -581,7 +586,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   }, [options.publicReadEnabled, options.syncEnabled, options.updatedBy]);
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !options.syncEnabled || !remoteReadyRef.current) return;
+    if (!isCloudConfigured || !options.syncEnabled || !remoteReadyRef.current) return;
 
     if (applyingRemoteRef.current) {
       applyingRemoteRef.current = false;
@@ -608,7 +613,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
           setCloudError("");
         })
         .catch((error) => {
-          const message = getErrorMessage(error, "No se pudo guardar en Firebase.");
+          const message = getErrorMessage(error, `No se pudo guardar en ${cloudBackendName}.`);
           const canRetry = isTransientFirebaseMessage(message) && attempt < SYNC_RETRY_DELAYS.length;
 
           if (!canRetry) {
@@ -618,7 +623,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
           }
 
           setCloudStatus("connecting");
-          setCloudError("Firebase esta reconectando. Mantuvimos los cambios en este equipo y volveremos a intentar sincronizar.");
+          setCloudError(`${cloudBackendName} esta reconectando. Mantuvimos los cambios en este equipo y volveremos a intentar sincronizar.`);
           retryTimeoutRef.current = window.setTimeout(() => {
             setCloudStatus("saving");
             persistState(attempt + 1);
