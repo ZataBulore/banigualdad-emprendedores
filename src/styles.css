@@ -1256,7 +1256,7 @@ label.secondary-button:hover,
   font-weight: 850;
 }
 
-.auth-session button {
+.auth-session button:not(.weather-pill) {
   display: inline-grid;
   width: 24px;
   height: 24px;
@@ -1269,7 +1269,7 @@ label.secondary-button:hover,
   padding: 0;
 }
 
-.auth-session button:hover {
+.auth-session button:not(.weather-pill):hover {
   background: #ffecea;
   color: var(--danger);
 }
