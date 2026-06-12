@@ -62,11 +62,17 @@ const getStateRef = () => {
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
+const compactAttachment = (attachment: unknown) => {
+  if (!attachment || typeof attachment !== "object") return attachment;
+  const { dataUrl: _dataUrl, ...rest } = attachment as { dataUrl?: unknown };
+  return rest;
+};
+
 const compactPaymentAttachments = <T extends { comprobanteAdjunto?: unknown; comprobantesAdjuntos?: unknown[] }>(item: T): T => {
   const comprobantesAdjuntos = Array.isArray(item.comprobantesAdjuntos)
-    ? item.comprobantesAdjuntos
+    ? item.comprobantesAdjuntos.map(compactAttachment)
     : item.comprobanteAdjunto
-      ? [item.comprobanteAdjunto]
+      ? [compactAttachment(item.comprobanteAdjunto)]
       : [];
 
   return {

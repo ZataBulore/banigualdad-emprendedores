@@ -416,6 +416,12 @@ const dataUrlToBlob = async (dataUrl: string) => {
 const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
   adjunto.url || adjunto.dataUrl || "";
 
+const getAttachmentProviderLabel = (adjunto: ComprobanteAdjunto) => {
+  if (adjunto.storageProvider === "supabase" || adjunto.url) return "Supabase";
+  if (adjunto.storageProvider === "firebase") return "Firebase";
+  return "Solo este equipo";
+};
+
 const isImageFile = (file: File) =>
   file.type.startsWith("image/") || IMAGE_EXTENSION_PATTERN.test(file.name);
 
@@ -3427,7 +3433,8 @@ function ComprobanteAdjuntoInput({
     try {
       onChange([...currentAdjuntos, await createComprobanteAdjunto(file)]);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.");
+      const message = uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.";
+      setError(`${message} Si estas en el celular, prueba con una captura liviana. Si el error menciona Supabase o bucket, hay que revisar el almacenamiento de comprobantes.`);
     } finally {
       setLoading(false);
     }
@@ -3454,6 +3461,9 @@ function ComprobanteAdjuntoInput({
             <div>
               <strong>{index + 1}. {adjunto.nombre}</strong>
               <span>{formatFileSize(adjunto.tamano)} · {formatDateTime(adjunto.createdAt)}</span>
+              <small className={`storage-provider ${adjunto.storageProvider === "supabase" || adjunto.url ? "supabase" : "local"}`}>
+                {getAttachmentProviderLabel(adjunto)}
+              </small>
             </div>
             <div className="attachment-card-actions">
               <button type="button" className="secondary-button compact" onClick={() => {
@@ -3490,7 +3500,7 @@ function ComprobanteAdjuntoInput({
           />
         </label>
         <small className="attachment-help">
-          {loading ? "Preparando archivo optimizado para sincronizar en la nube." : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
+          {loading ? `Preparando archivo y subiendo a ${isSupabaseConfigured ? "Supabase" : "la nube disponible"}.` : `${currentAdjuntos.length}/2 comprobantes adjuntos.`}
         </small>
       </div>
       {error && <small className="attachment-error">{error}</small>}
@@ -3558,7 +3568,7 @@ function AuthCheckingGate({ onPublicHome }: { onPublicHome: () => void }) {
         </p>
         <div className="auth-check-status" role="status" aria-live="polite">
           <span className="inline-spinner" aria-hidden="true" />
-          <strong>Conectando con Firebase</strong>
+          <strong>Conectando con {cloudBackendName}</strong>
         </div>
       </section>
       <footer className="login-footer">
