@@ -566,7 +566,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         }
 
         setCloudStatus("error");
-        setCloudError(message);
+        setCloudError(getErrorMessage(new Error(message), "No se pudo sincronizar con Firebase."));
       },
     );
 
