@@ -62,6 +62,26 @@ const getStateRef = () => {
 const sanitizeForFirestore = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T;
 
+const compactPaymentAttachments = <T extends { comprobanteAdjunto?: unknown; comprobantesAdjuntos?: unknown[] }>(item: T): T => {
+  const comprobantesAdjuntos = Array.isArray(item.comprobantesAdjuntos)
+    ? item.comprobantesAdjuntos
+    : item.comprobanteAdjunto
+      ? [item.comprobanteAdjunto]
+      : [];
+
+  return {
+    ...item,
+    comprobanteAdjunto: null,
+    comprobantesAdjuntos,
+  };
+};
+
+const compactStateForFirestore = (state: TesoreriaState): TesoreriaState => ({
+  ...state,
+  cobros: state.cobros.map(compactPaymentAttachments),
+  pagosCes: state.pagosCes.map(compactPaymentAttachments),
+});
+
 const withFirebaseTimeout = async <T>(operation: Promise<T>, fallbackMessage: string, timeoutMs = 12000) => {
   let timeoutId: number | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -113,7 +133,7 @@ export const saveRemoteState = async (state: TesoreriaState, updatedBy?: string)
     setDoc(
       stateRef,
       {
-        state: sanitizeForFirestore(state),
+        state: sanitizeForFirestore(compactStateForFirestore(state)),
         updatedAt: serverTimestamp(),
         updatedBy: updatedBy ?? "",
       },
