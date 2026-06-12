@@ -413,6 +413,19 @@ const dataUrlToBlob = async (dataUrl: string) => {
   return response.blob();
 };
 
+const withUploadTimeout = async <T,>(operation: Promise<T>, timeoutMs = 20000): Promise<T> => {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error("El comprobante tardo demasiado en prepararse. Intenta con una captura mas liviana o recortada.")), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
+};
+
 const getAttachmentSource = (adjunto: ComprobanteAdjunto) =>
   adjunto.url || adjunto.dataUrl || "";
 
@@ -3431,7 +3444,7 @@ function ComprobanteAdjuntoInput({
     setError("");
     setLoading(true);
     try {
-      onChange([...currentAdjuntos, await createComprobanteAdjunto(file)]);
+      onChange([...currentAdjuntos, await withUploadTimeout(createComprobanteAdjunto(file))]);
     } catch (uploadError) {
       const message = uploadError instanceof Error ? uploadError.message : "No se pudo adjuntar el comprobante.";
       setError(`${message} Si estas en el celular, prueba con una captura liviana. Si el error menciona Supabase o bucket, hay que revisar el almacenamiento de comprobantes.`);
