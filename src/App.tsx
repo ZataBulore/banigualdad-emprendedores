@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   CalendarCheck,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Check,
   CheckCircle2,
   CircleDollarSign,
@@ -9,6 +11,7 @@ import {
   Cloud,
   CloudOff,
   Download,
+  ExternalLink,
   Eye,
   FileImage,
   History,
@@ -19,6 +22,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Newspaper,
   Pencil,
   Phone,
   Plus,
@@ -89,6 +93,9 @@ const MAX_EMPRENDIMIENTO_FOTOS = 4;
 const MAX_REUNION_FOTOS = 6;
 const ACCEPTED_FOTO_TYPES = "image/*";
 const IMAGE_EXTENSION_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i;
+const NEGRETE_NEWS_API_URL =
+  String(import.meta.env.VITE_NEWS_API_URL ?? "").trim() ||
+  "https://www.muninegrete.cl/wp-json/wp/v2/posts?per_page=8&_fields=id,date,title,excerpt,link";
 
 const estadoLabels: Record<EstadoPago, string> = {
   pendiente: "Pendiente",
@@ -2239,6 +2246,186 @@ function App() {
   );
 }
 
+type NegreteNewsApiPost = {
+  id: number;
+  date: string;
+  link: string;
+  title?: { rendered?: string };
+  excerpt?: { rendered?: string };
+};
+
+type NegreteNewsPost = {
+  id: number;
+  date: string;
+  link: string;
+  title: string;
+  excerpt: string;
+};
+
+const decodeHtmlText = (value = "") => {
+  if (typeof document === "undefined") return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  const element = document.createElement("textarea");
+  element.innerHTML = value.replace(/<[^>]*>/g, " ");
+  return element.value.replace(/\s+/g, " ").trim();
+};
+
+const dailyNewsSeed = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
+
+const formatNewsDate = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Fecha por confirmar";
+  return new Intl.DateTimeFormat("es-CL", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+};
+
+const hashNewsKey = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+const shuffleNewsPosts = (posts: NegreteNewsPost[]) => {
+  const seed = dailyNewsSeed();
+  return [...posts].sort((a, b) => hashNewsKey(`${seed}-${a.id}`) - hashNewsKey(`${seed}-${b.id}`));
+};
+
+function PublicNewsCarousel() {
+  const [posts, setPosts] = useState<NegreteNewsPost[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+
+    fetch(NEGRETE_NEWS_API_URL, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("No se pudo cargar la fuente municipal.");
+        return response.json() as Promise<NegreteNewsApiPost[]>;
+      })
+      .then((items) => {
+        const nextPosts = shuffleNewsPosts(
+          items
+            .map((item) => ({
+              id: item.id,
+              date: item.date,
+              link: item.link,
+              title: decodeHtmlText(item.title?.rendered ?? "Informacion municipal"),
+              excerpt: decodeHtmlText(item.excerpt?.rendered ?? "").replace(/\[&hellip;\]|\[...\]/g, "").trim(),
+            }))
+            .filter((item) => item.title && item.link),
+        );
+        setPosts(nextPosts);
+        setActiveIndex(0);
+        setStatus(nextPosts.length ? "ready" : "error");
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStatus("error");
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (activeIndex >= posts.length) setActiveIndex(0);
+  }, [activeIndex, posts.length]);
+
+  const goToPost = (direction: -1 | 1) => {
+    if (!posts.length) return;
+    setActiveIndex((current) => (current + direction + posts.length) % posts.length);
+  };
+
+  return (
+    <section className="public-news-section" aria-label="Noticias de Negrete">
+      <div className="public-news-heading">
+        <span><Newspaper size={18} /></span>
+        <div>
+          <p className="eyebrow">Noticias de Negrete</p>
+          <h2>Informaciones municipales actualizadas</h2>
+        </div>
+      </div>
+
+      <div className="public-news-carousel">
+        <button
+          className="public-news-control"
+          onClick={() => goToPost(-1)}
+          disabled={posts.length < 2}
+          title="Noticia anterior"
+          aria-label="Noticia anterior"
+        >
+          <ChevronLeft size={18} />
+        </button>
+
+        <div className="public-news-window">
+          {status === "loading" && (
+            <article className="public-news-card placeholder">
+              <strong>Cargando informaciones locales...</strong>
+              <p>Conectando con la fuente oficial de la Municipalidad de Negrete.</p>
+            </article>
+          )}
+
+          {status === "error" && (
+            <article className="public-news-card placeholder">
+              <strong>No pudimos traer las noticias ahora.</strong>
+              <p>La fuente municipal puede estar lenta. Intenta actualizar en unos minutos.</p>
+              <a href="https://www.muninegrete.cl/" target="_blank" rel="noreferrer">
+                Ver sitio municipal <ExternalLink size={14} />
+              </a>
+            </article>
+          )}
+
+          {status === "ready" && (
+            <div className="public-news-track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+              {posts.map((post) => (
+                <article className="public-news-card" key={post.id}>
+                  <div className="public-news-date">
+                    <CalendarDays size={15} />
+                    <span>{formatNewsDate(post.date)}</span>
+                  </div>
+                  <h3>{post.title}</h3>
+                  {post.excerpt && <p>{post.excerpt}</p>}
+                  <a href={post.link} target="_blank" rel="noreferrer">
+                    Leer informacion <ExternalLink size={14} />
+                  </a>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button
+          className="public-news-control"
+          onClick={() => goToPost(1)}
+          disabled={posts.length < 2}
+          title="Noticia siguiente"
+          aria-label="Noticia siguiente"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      {posts.length > 1 && (
+        <div className="public-news-dots" aria-label="Selector de noticias">
+          {posts.map((post, index) => (
+            <button
+              key={post.id}
+              className={index === activeIndex ? "active" : ""}
+              onClick={() => setActiveIndex(index)}
+              aria-label={`Ver noticia ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PublicHome({
   route,
   centro,
@@ -2324,6 +2511,8 @@ function PublicHome({
               <span><Store size={16} /> Productos, servicios y oficios locales</span>
             </div>
           </section>
+
+          <PublicNewsCarousel />
 
           <section className="public-stat-strip" aria-label="Resumen de la vitrina">
             <div>
