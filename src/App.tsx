@@ -106,7 +106,8 @@ const ORIGINAL_IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
 };
 const NEGRETE_NEWS_API_URL =
   String(import.meta.env.VITE_NEWS_API_URL ?? "").trim() ||
-  "https://www.muninegrete.cl/wp-json/wp/v2/posts?per_page=8&_fields=id,date,title,excerpt,link";
+  "https://www.muninegrete.cl/wp-json/wp/v2/posts?per_page=8&orderby=date&order=desc&_fields=id,date,title,excerpt,link";
+const NEWS_CAROUSEL_INTERVAL_MS = 5000;
 const NEGRETE_LATITUDE = -37.58668;
 const NEGRETE_LONGITUDE = -72.52833;
 const NEGRETE_WEATHER_API_URL =
@@ -2603,7 +2604,6 @@ const decodeHtmlText = (value = "") => {
   return element.value.replace(/\s+/g, " ").trim();
 };
 
-const dailyNewsSeed = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
 
 const formatNewsDate = (value: string) => {
   const date = new Date(value);
@@ -2615,18 +2615,13 @@ const formatNewsDate = (value: string) => {
   }).format(date);
 };
 
-const hashNewsKey = (value: string) => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-};
-
-const shuffleNewsPosts = (posts: NegreteNewsPost[]) => {
-  const seed = dailyNewsSeed();
-  return [...posts].sort((a, b) => hashNewsKey(`${seed}-${a.id}`) - hashNewsKey(`${seed}-${b.id}`));
-};
+const sortNewsPostsByNewest = (posts: NegreteNewsPost[]) =>
+  [...posts].sort((a, b) => {
+    const bTime = new Date(b.date).getTime();
+    const aTime = new Date(a.date).getTime();
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return b.id - a.id;
+    return bTime - aTime;
+  });
 
 const formatWeatherNumber = (value: number, suffix = "") =>
   Number.isFinite(value) ? `${Math.round(value)}${suffix}` : "Sin dato";
@@ -2789,7 +2784,7 @@ function PublicNewsCarousel() {
         return response.json() as Promise<NegreteNewsApiPost[]>;
       })
       .then((items) => {
-        const nextPosts = shuffleNewsPosts(
+        const nextPosts = sortNewsPostsByNewest(
           items
             .map((item) => ({
               id: item.id,
@@ -2815,6 +2810,16 @@ function PublicNewsCarousel() {
   useEffect(() => {
     if (activeIndex >= posts.length) setActiveIndex(0);
   }, [activeIndex, posts.length]);
+
+  useEffect(() => {
+    if (status !== "ready" || posts.length < 2) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % posts.length);
+    }, NEWS_CAROUSEL_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [posts.length, status]);
 
   const goToPost = (direction: -1 | 1) => {
     if (!posts.length) return;
