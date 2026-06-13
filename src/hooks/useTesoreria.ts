@@ -306,6 +306,76 @@ const normalizarCorreos = (emails: string[]) =>
 const getCorreosBaseKey = () =>
   normalizarCorreos(configuracionInicial.seguridad.correosAutorizados).join("|");
 
+const textEncodingRepairs: Array<[RegExp, string]> = [
+  [/Reuni�n/g, "Reunión"],
+  [/reuni�n/g, "reunión"],
+  [/inform�/g, "informó"],
+  [/cr�dito/g, "crédito"],
+  [/Cr�dito/g, "Crédito"],
+  [/d�a/g, "día"],
+  [/D�a/g, "Día"],
+  [/formaci�n/g, "formación"],
+  [/Formaci�n/g, "Formación"],
+  [/observaci�n/g, "observación"],
+  [/Observaci�n/g, "Observación"],
+  [/configuraci�n/g, "configuración"],
+  [/Configuraci�n/g, "Configuración"],
+  [/publicaci�n/g, "publicación"],
+  [/Publicaci�n/g, "Publicación"],
+  [/revisi�n/g, "revisión"],
+  [/Revisi�n/g, "Revisión"],
+  [/renovaci�n/g, "renovación"],
+  [/Renovaci�n/g, "Renovación"],
+  [/administraci�n/g, "administración"],
+  [/Administraci�n/g, "Administración"],
+  [/sincronizaci�n/g, "sincronización"],
+  [/Sincronizaci�n/g, "Sincronización"],
+  [/autorizaci�n/g, "autorización"],
+  [/Autorizaci�n/g, "Autorización"],
+  [/acci�n/g, "acción"],
+  [/Acci�n/g, "Acción"],
+  [/comisi�n/g, "comisión"],
+  [/Comisi�n/g, "Comisión"],
+  [/fundaci�n/g, "fundación"],
+  [/Fundaci�n/g, "Fundación"],
+  [/atenci�n/g, "atención"],
+  [/Atenci�n/g, "Atención"],
+  [/comunicaci�n/g, "comunicación"],
+  [/Comunicaci�n/g, "Comunicación"],
+  [/contrase�a/g, "contraseña"],
+  [/Contrase�a/g, "Contraseña"],
+  [/a�os/g, "años"],
+  [/A�os/g, "Años"],
+  [/a�o/g, "año"],
+  [/A�o/g, "Año"],
+  [/Mu�oz/g, "Muñoz"],
+  [/mu�oz/g, "muñoz"],
+];
+
+const repairTextEncoding = (value: string) =>
+  textEncodingRepairs.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+
+const skipTextRepairKeys = new Set(["dataUrl", "url", "storagePath", "id", "rut", "email", "correo", "whatsapp"]);
+
+const repairStateText = <T,>(value: T, key = ""): T => {
+  if (typeof value === "string") {
+    return (skipTextRepairKeys.has(key) ? value : repairTextEncoding(value)) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => repairStateText(item)) as T;
+  }
+
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
+      entryKey,
+      repairStateText(entryValue, entryKey),
+    ]),
+  ) as T;
+};
+
 const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): Reunion => {
   const existentes = new Map((reunion.asistencias ?? []).map((asistencia) => [asistencia.emprendedorId, asistencia]));
 
@@ -324,12 +394,13 @@ const normalizarAsistencias = (reunion: Reunion, emprendedores: Emprendedor[]): 
 };
 
 const migrateState = (state: TesoreriaState): TesoreriaState => {
-  const periodosActuales = new Map((state.periodos ?? []).map((periodo) => [periodo.id, periodo]));
-  const cobrosActuales = new Map((state.cobros ?? []).map((cobro) => [cobro.id, cobro]));
+  const cleanState = repairStateText(state);
+  const periodosActuales = new Map((cleanState.periodos ?? []).map((periodo) => [periodo.id, periodo]));
+  const cobrosActuales = new Map((cleanState.cobros ?? []).map((cobro) => [cobro.id, cobro]));
   const periodosIniciales = new Set(tesoreriaInicial.periodos.map((periodo) => periodo.id));
   const cobrosIniciales = new Set(tesoreriaInicial.cobros.map((cobro) => cobro.id));
   const correosBaseKey = getCorreosBaseKey();
-  const seguridadActual = state.configuracion?.seguridad;
+  const seguridadActual = cleanState.configuracion?.seguridad;
   const correosGuardados = seguridadActual?.correosAutorizados ?? [];
   const correosAutorizados =
     seguridadActual?.correosBaseSincronizados === correosBaseKey
@@ -337,62 +408,62 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       : normalizarCorreos([...correosGuardados, ...configuracionInicial.seguridad.correosAutorizados]);
   const configuracion = {
     ...configuracionInicial,
-    ...(state.configuracion ?? {}),
+    ...(cleanState.configuracion ?? {}),
     ces: {
       ...configuracionInicial.ces,
-      ...(state.configuracion?.ces ?? {}),
+      ...(cleanState.configuracion?.ces ?? {}),
       montosPorCredito: {
         ...configuracionInicial.ces.montosPorCredito,
-        ...(state.configuracion?.ces?.montosPorCredito ?? {}),
+        ...(cleanState.configuracion?.ces?.montosPorCredito ?? {}),
       },
     },
     microcredito: {
       ...configuracionInicial.microcredito,
-      ...(state.configuracion?.microcredito ?? {}),
+      ...(cleanState.configuracion?.microcredito ?? {}),
       directiva: {
         ...configuracionInicial.microcredito.directiva,
-        ...(state.configuracion?.microcredito?.directiva ?? {}),
+        ...(cleanState.configuracion?.microcredito?.directiva ?? {}),
       },
       requisitosCentro:
-        state.configuracion?.microcredito?.requisitosCentro?.length
-          ? state.configuracion.microcredito.requisitosCentro
+        cleanState.configuracion?.microcredito?.requisitosCentro?.length
+          ? cleanState.configuracion.microcredito.requisitosCentro
           : configuracionInicial.microcredito.requisitosCentro,
       normasInternas:
-        state.configuracion?.microcredito?.normasInternas?.length
-          ? state.configuracion.microcredito.normasInternas
+        cleanState.configuracion?.microcredito?.normasInternas?.length
+          ? cleanState.configuracion.microcredito.normasInternas
           : configuracionInicial.microcredito.normasInternas,
       reglasRenovacionAusencias:
-        state.configuracion?.microcredito?.reglasRenovacionAusencias?.length
-          ? state.configuracion.microcredito.reglasRenovacionAusencias
+        cleanState.configuracion?.microcredito?.reglasRenovacionAusencias?.length
+          ? cleanState.configuracion.microcredito.reglasRenovacionAusencias
           : configuracionInicial.microcredito.reglasRenovacionAusencias,
       pilaresFundacion:
-        state.configuracion?.microcredito?.pilaresFundacion?.length
-          ? state.configuracion.microcredito.pilaresFundacion
+        cleanState.configuracion?.microcredito?.pilaresFundacion?.length
+          ? cleanState.configuracion.microcredito.pilaresFundacion
           : configuracionInicial.microcredito.pilaresFundacion,
     },
     seguridad: {
       ...configuracionInicial.seguridad,
-      ...(state.configuracion?.seguridad ?? {}),
+      ...(cleanState.configuracion?.seguridad ?? {}),
       correosAutorizados,
       correosBaseSincronizados: correosBaseKey,
     },
     cuentaTransferencia: {
       ...configuracionInicial.cuentaTransferencia,
-      ...(state.configuracion?.cuentaTransferencia ?? {}),
+      ...(cleanState.configuracion?.cuentaTransferencia ?? {}),
     },
   };
 
   return {
-    ...state,
+    ...cleanState,
     configuracion,
     periodos: [
       ...tesoreriaInicial.periodos.map((periodo) => ({
         ...periodo,
         ...(periodosActuales.get(periodo.id) ?? {}),
       })),
-      ...(state.periodos ?? []).filter((periodo) => !periodosIniciales.has(periodo.id)),
+      ...(cleanState.periodos ?? []).filter((periodo) => !periodosIniciales.has(periodo.id)),
     ].sort((a, b) => a.fechaVencimiento.localeCompare(b.fechaVencimiento)),
-    emprendedores: state.emprendedores.map((emprendedor) => ({
+    emprendedores: cleanState.emprendedores.map((emprendedor) => ({
       ...emprendedor,
       whatsapp: emprendedor.whatsapp ?? "",
       whatsappSecundario: emprendedor.whatsappSecundario ?? "",
@@ -407,21 +478,21 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
         ...cobro,
         ...(cobrosActuales.get(cobro.id) ?? {}),
       })),
-      ...(state.cobros ?? []).filter((cobro) => !cobrosIniciales.has(cobro.id)),
+      ...(cleanState.cobros ?? []).filter((cobro) => !cobrosIniciales.has(cobro.id)),
     ].map((cobro) => ({
       ...withNormalizedPaymentAttachments(cobro),
       fechaAtraso: cobro.fechaAtraso ?? "",
       referenciaPago: cobro.referenciaPago ?? "",
     })),
-    pagosCes: state.pagosCes?.length
-      ? state.pagosCes.map((pago) => ({
+    pagosCes: cleanState.pagosCes?.length
+      ? cleanState.pagosCes.map((pago) => ({
           ...withNormalizedPaymentAttachments(pago),
           fechaVencimiento: pago.fechaVencimiento || configuracion.ces.fechaVencimiento,
           fechaAtraso: pago.fechaAtraso ?? "",
           referenciaPago: pago.referenciaPago ?? "",
         }))
-      : crearPagosCes(state.emprendedores, configuracion),
-    emprendimientos: (state.emprendimientos ?? []).map((emprendimiento) => ({
+      : crearPagosCes(cleanState.emprendedores, configuracion),
+    emprendimientos: (cleanState.emprendimientos ?? []).map((emprendimiento) => ({
       ...emprendimiento,
       rubro: emprendimiento.rubro ?? "",
       descripcion: emprendimiento.descripcion ?? "",
@@ -438,8 +509,8 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       createdAt: emprendimiento.createdAt ?? new Date().toISOString(),
       updatedAt: emprendimiento.updatedAt ?? emprendimiento.createdAt ?? new Date().toISOString(),
     })),
-    reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
-    historial: (state.historial ?? []).slice(0, 450).map((movimiento) => ({
+    reuniones: (cleanState.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, cleanState.emprendedores)),
+    historial: (cleanState.historial ?? []).slice(0, 450).map((movimiento) => ({
       ...movimiento,
       detalle: compactAuditDetail(movimiento.detalle ?? ""),
     })),
