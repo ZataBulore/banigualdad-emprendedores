@@ -83,13 +83,17 @@ const compactForFirestore = <T>(value: T, options: { dropPrimaryReceipt?: boolea
     return value.map((item) => compactForFirestore(item, options)) as T;
   }
 
+  if (typeof value === "string") {
+    return (value.length > 1200 ? `${value.slice(0, 1200)}...` : value) as T;
+  }
+
   if (!value || typeof value !== "object") return value;
 
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
     Object.entries(record)
       .filter(([key]) => key !== "dataUrl")
-      .filter(([key]) => !(key === "url" && record.storageProvider === "firebase"))
+      .filter(([key]) => !(key === "url" && record.storageProvider === "firebase" && record.storagePath))
       .filter(([key]) => !(options.dropPrimaryReceipt && key === "comprobanteAdjunto"))
       .map(([key, item]) => [key, compactForFirestore(item, options)]),
   ) as T;

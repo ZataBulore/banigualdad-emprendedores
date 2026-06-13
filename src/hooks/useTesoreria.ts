@@ -173,8 +173,8 @@ const normalizeAuditValue = (value: unknown): string => {
   if (typeof value === "boolean") return value ? "si" : "no";
   if (Array.isArray(value)) return value.length ? value.map(normalizeAuditValue).join(", ") : "sin dato";
   if (typeof value === "object") {
-    const maybeAttachment = value as { nombre?: unknown; tamano?: unknown; dataUrl?: unknown };
-    if (maybeAttachment.dataUrl && maybeAttachment.nombre) {
+    const maybeAttachment = value as { nombre?: unknown; tamano?: unknown; dataUrl?: unknown; url?: unknown; storagePath?: unknown };
+    if (maybeAttachment.nombre && (maybeAttachment.dataUrl || maybeAttachment.url || maybeAttachment.storagePath || maybeAttachment.tamano)) {
       const bytes = Number(maybeAttachment.tamano ?? 0);
       const size = Number.isFinite(bytes) && bytes > 0 ? `${Math.round(bytes / 1024)} KB` : "sin tamano";
       return `${String(maybeAttachment.nombre)} (${size})`;
@@ -187,6 +187,9 @@ const normalizeAuditValue = (value: unknown): string => {
   }
   return String(value);
 };
+
+const compactAuditDetail = (detalle: string) =>
+  detalle.length > 900 ? `${detalle.slice(0, 900)}...` : detalle;
 
 const auditValuesAreEqual = (before: unknown, after: unknown) =>
   normalizeAuditValue(before).trim() === normalizeAuditValue(after).trim();
@@ -436,7 +439,10 @@ const migrateState = (state: TesoreriaState): TesoreriaState => {
       updatedAt: emprendimiento.updatedAt ?? emprendimiento.createdAt ?? new Date().toISOString(),
     })),
     reuniones: (state.reuniones ?? []).map((reunion) => normalizarAsistencias(reunion, state.emprendedores)),
-    historial: state.historial ?? [],
+    historial: (state.historial ?? []).slice(0, 450).map((movimiento) => ({
+      ...movimiento,
+      detalle: compactAuditDetail(movimiento.detalle ?? ""),
+    })),
   };
 };
 
@@ -450,6 +456,14 @@ const loadState = (): TesoreriaState => {
     return tesoreriaInicial;
   }
 };
+
+const getStateTime = (state: TesoreriaState | null | undefined) => {
+  const value = state?.updatedAt ? Date.parse(state.updatedAt) : 0;
+  return Number.isFinite(value) ? value : 0;
+};
+
+const isLocalStateNewer = (localState: TesoreriaState, remoteState: TesoreriaState) =>
+  getStateTime(localState) > getStateTime(remoteState) + 1000;
 
 const crearEstadoOperativoInicial = (current: TesoreriaState): TesoreriaState => {
   const emprendedores = current.emprendedores.length ? current.emprendedores : tesoreriaInicial.emprendedores;
@@ -490,15 +504,14 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const [cloudError, setCloudError] = useState("");
   const [cloudReady, setCloudReady] = useState(!isCloudConfigured);
   const applyingRemoteRef = useRef(false);
+  const pendingLocalSaveRef = useRef(false);
   const remoteReadyRef = useRef(false);
+  const hasStoredLocalStateRef = useRef(Boolean(window.localStorage.getItem(STORAGE_KEY)));
   const saveTimeoutRef = useRef<number | null>(null);
   const retryTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ ...state, updatedAt: new Date().toISOString() }),
-    );
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   useEffect(() => {
@@ -549,10 +562,22 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       .then(async (remoteState) => {
         if (cancelled) return;
         if (remoteState) {
-          applyingRemoteRef.current = true;
-          setState(migrateState(remoteState));
+          const migratedRemoteState = migrateState(remoteState);
+          if (hasStoredLocalStateRef.current && isLocalStateNewer(state, migratedRemoteState)) {
+            pendingLocalSaveRef.current = true;
+            setCloudStatus("saving");
+            await saveRemoteState(state, options.updatedBy);
+            pendingLocalSaveRef.current = false;
+          } else {
+            pendingLocalSaveRef.current = false;
+            applyingRemoteRef.current = true;
+            setState(migratedRemoteState);
+          }
         } else {
+          pendingLocalSaveRef.current = true;
+          setCloudStatus("saving");
           await saveRemoteState(state, options.updatedBy);
+          pendingLocalSaveRef.current = false;
         }
         if (cancelled) return;
         remoteReadyRef.current = true;
@@ -569,6 +594,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     const unsubscribe = subscribeRemoteState(
       (remoteState) => {
         if (!remoteReadyRef.current || !remoteState) return;
+        if (pendingLocalSaveRef.current) return;
         applyingRemoteRef.current = true;
         setState(migrateState(remoteState));
         setCloudReady(true);
@@ -612,6 +638,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       retryTimeoutRef.current = null;
     }
 
+    pendingLocalSaveRef.current = true;
     setCloudStatus("saving");
     const persistState = (attempt = 0) => {
       saveRemoteState(state, options.updatedBy)
@@ -620,6 +647,7 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
             window.clearTimeout(retryTimeoutRef.current);
             retryTimeoutRef.current = null;
           }
+          pendingLocalSaveRef.current = false;
           setCloudStatus("synced");
           setCloudError("");
         })
@@ -662,6 +690,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       const cobroActual = current.cobros.find((cobro) => cobro.id === id);
       const normalizedPatch = normalizePaymentPatch(cobroActual, patch);
       if (!getPatchChanges(cobroActual, normalizedPatch).length) return current;
+      applyingRemoteRef.current = false;
+      pendingLocalSaveRef.current = true;
       const persona = cobroActual ? current.emprendedores.find((item) => item.id === cobroActual.emprendedorId) : undefined;
 
       return withMovimiento({
@@ -686,6 +716,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
       const pagoActual = current.pagosCes.find((pago) => pago.id === id);
       const normalizedPatch = normalizePaymentPatch(pagoActual, patch);
       if (!getPatchChanges(pagoActual, normalizedPatch).length) return current;
+      applyingRemoteRef.current = false;
+      pendingLocalSaveRef.current = true;
       const persona = pagoActual ? current.emprendedores.find((item) => item.id === pagoActual.emprendedorId) : undefined;
 
       return withMovimiento({
@@ -1090,15 +1122,23 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
     detail: { fechaPago: string; metodoPago: MetodoPago; referenciaPago: string; comprobanteAdjunto?: ComprobanteAdjunto | null; comprobantesAdjuntos?: ComprobanteAdjunto[]; observacion?: string },
   ) => {
     const selected = new Set(ids);
+    const comprobantesDelPago = normalizeComprobantesAdjuntos(
+      undefined,
+      detail.comprobantesAdjuntos ?? (detail.comprobanteAdjunto ? [detail.comprobanteAdjunto] : []),
+    );
 
     setState((current) => {
       const cobrosSeleccionados = current.cobros.filter((cobro) => selected.has(cobro.id));
       const persona = current.emprendedores.find((item) => item.id === cobrosSeleccionados[0]?.emprendedorId);
 
+      applyingRemoteRef.current = false;
+      pendingLocalSaveRef.current = true;
+
       return withMovimiento({
         ...current,
         cobros: current.cobros.map((cobro) => {
           if (!selected.has(cobro.id)) return cobro;
+          const comprobantesAdjuntos = comprobantesDelPago.map((adjunto) => ({ ...adjunto }));
 
           return {
             ...cobro,
@@ -1108,8 +1148,8 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
             fechaPago: detail.fechaPago,
             metodoPago: detail.metodoPago,
             referenciaPago: detail.metodoPago === "efectivo" ? "" : detail.referenciaPago.trim(),
-            comprobanteAdjunto: detail.comprobantesAdjuntos?.[0] ?? detail.comprobanteAdjunto ?? null,
-            comprobantesAdjuntos: normalizeComprobantesAdjuntos(detail.comprobanteAdjunto, detail.comprobantesAdjuntos),
+            comprobanteAdjunto: comprobantesAdjuntos[0] ?? null,
+            comprobantesAdjuntos,
             observacion: detail.observacion?.trim() || cobro.observacion,
             confirmadoPorTesorero: true,
           };

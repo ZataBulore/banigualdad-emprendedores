@@ -7,7 +7,8 @@ service cloud.firestore {
         && request.auth.token.email in [
           "serbulboa@gmail.com",
           "noneknowmyname@gmail.com",
-          "jbetanzo74@gmail.com"
+          "jbetanzo74@gmail.com",
+          "zatadeveloper@gmail.com"
         ];
     }
 
@@ -23,7 +24,7 @@ service cloud.firestore {
         && request.resource.data.nombreContacto is string
         && request.resource.data.rut is string
         && request.resource.data.fotos is list
-        && request.resource.data.fotos.size() <= 3;
+        && request.resource.data.fotos.size() <= 4;
       allow read, update, delete: if isAdmin();
     }
 

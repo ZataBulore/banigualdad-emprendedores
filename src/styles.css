@@ -1317,28 +1317,46 @@ label.secondary-button:hover,
 }
 
 .sync-activity {
-  position: sticky;
-  top: 8px;
-  z-index: 20;
-  display: inline-flex;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 36px;
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: end center;
+  background: rgba(28, 28, 30, 0.18);
+  padding: 16px 16px max(18px, env(safe-area-inset-bottom));
+  pointer-events: all;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.sync-activity-card {
+  display: grid;
+  width: min(420px, 100%);
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 149, 0, 0.28);
-  border-radius: 999px;
+  border: 1px solid rgba(255, 149, 0, 0.32);
+  border-radius: 14px;
   background: #fff7e8;
   color: #8a5200;
-  padding: 0 12px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.08);
-  font-size: 0.78rem;
+  padding: 12px 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
 }
 
 .sync-activity strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: block;
+  color: #5f3b00;
+  font-size: 0.92rem;
+  line-height: 1.15;
+}
+
+.sync-activity small {
+  display: block;
+  margin-top: 3px;
+  color: #8a5200;
+  font-size: 0.76rem;
+  font-weight: 760;
+  line-height: 1.35;
 }
 
 .sync-error-banner {
@@ -2718,6 +2736,54 @@ label.secondary-button:hover,
   text-align: right;
 }
 
+.history-status-line {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.history-receipts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-receipt-link {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(49, 112, 86, 0.24);
+  border-radius: 999px;
+  background: rgba(49, 112, 86, 0.08);
+  color: #286b52;
+  flex: 0 0 auto;
+  text-decoration: none;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.history-receipt-link.pdf {
+  border-color: rgba(168, 79, 54, 0.26);
+  background: rgba(168, 79, 54, 0.08);
+  color: #9f422d;
+}
+
+.history-receipt-link:hover,
+.history-receipt-link:focus-visible {
+  border-color: currentColor;
+  background: var(--surface);
+  outline: none;
+}
+
+.history-receipt-link.missing {
+  border-color: var(--line-soft);
+  background: var(--surface-muted);
+  color: var(--muted);
+}
+
 .source-box {
   display: flex;
   gap: 8px;
@@ -4069,17 +4135,38 @@ label.secondary-button:hover,
   display: grid;
   gap: 8px;
   margin-top: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
 }
 
-.review-photo-strip > strong {
+.review-photo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-photo-head strong {
+  display: block;
+  margin-top: 2px;
   color: var(--text);
   font-size: 0.86rem;
 }
 
-.review-photo-strip > div {
+.review-photo-strip input[type="file"] {
+  display: none;
+}
+
+.review-photo-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
+}
+
+.review-photo-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .review-photo-strip figure {
@@ -4087,7 +4174,7 @@ label.secondary-button:hover,
   margin: 0;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: var(--surface-muted);
+  background: var(--surface);
 }
 
 .review-photo-strip img {
@@ -4097,11 +4184,16 @@ label.secondary-button:hover,
   object-fit: cover;
 }
 
-.review-photo-strip figcaption,
-.review-photo-strip span {
-  display: block;
+.review-photo-strip figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px;
+}
+
+.review-photo-strip figcaption span {
   overflow: hidden;
-  padding: 7px;
   color: var(--muted);
   font-size: 0.7rem;
   font-weight: 700;
@@ -5450,6 +5542,15 @@ textarea:disabled {
 
   .whatsapp-actions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .history-status-line {
+    gap: 5px;
+  }
+
+  .history-receipt-link {
+    width: 28px;
+    height: 28px;
   }
 
   .ces-header {

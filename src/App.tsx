@@ -90,14 +90,20 @@ const AUTH_SESSION_KEY = "semilla-emprende-google-user-v2";
 const AUTH_SESSION_VERSION = 2;
 const APP_VERSION = "1.0.0";
 const SUPERADMIN_RESET_PASSWORD = "1q2w3e4r.,*";
-const MAX_COMPROBANTE_BYTES = 120 * 1024;
-const MAX_IMAGE_BYTES = 120 * 1024;
+const MAX_COMPROBANTE_BYTES = 512 * 1024;
+const MAX_IMAGE_BYTES = 420 * 1024;
 const MAX_IMAGE_SIDE = 960;
 const ACCEPTED_COMPROBANTE_TYPES = "image/*,application/pdf";
 const MAX_EMPRENDIMIENTO_FOTOS = 4;
 const MAX_REUNION_FOTOS = 6;
 const ACCEPTED_FOTO_TYPES = "image/*";
 const IMAGE_EXTENSION_PATTERN = /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i;
+const ORIGINAL_IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
 const NEGRETE_NEWS_API_URL =
   String(import.meta.env.VITE_NEWS_API_URL ?? "").trim() ||
   "https://www.muninegrete.cl/wp-json/wp/v2/posts?per_page=8&_fields=id,date,title,excerpt,link";
@@ -291,6 +297,9 @@ const transferenciaRequiereAdjunto = (metodoPago: MetodoPago) => metodoPago === 
 const estadoActionClass = (estadoActual: EstadoPago, estadoBoton: EstadoPago, base = "") =>
   ["state-action", base, estadoActual === estadoBoton ? "action-selected" : ""].filter(Boolean).join(" ");
 
+const paymentHasReceiptsVisible = (estadoPago: EstadoPago, montoPagado: number, adjuntos: ComprobanteAdjunto[]) =>
+  adjuntos.length > 0 && (estadoPago === "pagado" || estadoPago === "parcial" || montoPagado > 0);
+
 const pressFeedbackSelector = "button, label.secondary-button, .quota-option";
 
 const getComprobantesAdjuntos = (
@@ -308,6 +317,9 @@ const getComprobantesAdjuntos = (
 const getComprobanteKey = (adjunto: ComprobanteAdjunto) =>
   [adjunto.createdAt, adjunto.nombre, adjunto.tamano, adjunto.tipo].join("|");
 
+const isPdfAttachment = (adjunto: ComprobanteAdjunto) =>
+  adjunto.tipo === "application/pdf" || /\.pdf$/i.test(adjunto.nombre);
+
 const validarComprobanteTransferencia = async (
   metodoPago: MetodoPago,
   comprobanteAdjunto?: ComprobanteAdjunto | null,
@@ -319,6 +331,44 @@ const validarComprobanteTransferencia = async (
   });
   return false;
 };
+
+function HistoryReceiptLinks({ adjuntos }: { adjuntos: ComprobanteAdjunto[] }) {
+  if (!adjuntos.length) return null;
+
+  return (
+    <div className="history-receipts" aria-label={`${adjuntos.length} comprobante${adjuntos.length === 1 ? "" : "s"} adjunto${adjuntos.length === 1 ? "" : "s"}`}>
+      {adjuntos.map((adjunto, index) => {
+        const source = getAttachmentSource(adjunto);
+        const pdf = isPdfAttachment(adjunto);
+        const fallbackIcon = pdf ? <ReceiptText size={14} /> : <FileImage size={14} />;
+        const label = `${pdf ? "PDF" : "Imagen"} ${index + 1}: ${adjunto.nombre}`;
+
+        if (!source) {
+          return (
+            <span key={getComprobanteKey(adjunto)} className="history-receipt-link missing" title={`${label} no sincronizado`}>
+              {fallbackIcon}
+            </span>
+          );
+        }
+
+        return (
+          <a
+            key={getComprobanteKey(adjunto)}
+            className={`history-receipt-link ${pdf ? "pdf" : "image"}`}
+            href={source}
+            target="_blank"
+            rel="noreferrer"
+            download={adjunto.nombre}
+            title={label}
+            aria-label={label}
+          >
+            <Download size={14} />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
 const cleanRut = (rut: string) => rut.replace(/[.\-\s]/g, "").toUpperCase();
 
@@ -441,17 +491,105 @@ const getAttachmentProviderLabel = (adjunto: ComprobanteAdjunto) => {
 const isImageFile = (file: File) =>
   file.type.startsWith("image/") || IMAGE_EXTENSION_PATTERN.test(file.name);
 
+const getOriginalImageType = (file: File) => {
+  if (file.type === "image/jpeg" || file.type === "image/png" || file.type === "image/webp") return file.type;
+  const extension = file.name.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() ?? "";
+  return ORIGINAL_IMAGE_TYPE_BY_EXTENSION[extension] ?? "";
+};
+
+const canUploadOriginalImage = (file: File) =>
+  Boolean(getOriginalImageType(file)) && file.size <= MAX_IMAGE_BYTES;
+
 const loadImage = (src: string) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      if (image.decode) {
+        image.decode().then(() => resolve(image)).catch(() => resolve(image));
+        return;
+      }
+      resolve(image);
+    };
     image.onerror = () => reject(new Error("No se pudo preparar la imagen."));
     image.src = src;
   });
 
+const canvasLooksMostlyBlack = (context: CanvasRenderingContext2D, width: number, height: number) => {
+  const sampleWidth = Math.min(width, 64);
+  const sampleHeight = Math.min(height, 64);
+  const sampleCanvas = document.createElement("canvas");
+  sampleCanvas.width = sampleWidth;
+  sampleCanvas.height = sampleHeight;
+  const sampleContext = sampleCanvas.getContext("2d", { willReadFrequently: true });
+  if (!sampleContext) return false;
+
+  sampleContext.drawImage(context.canvas, 0, 0, sampleWidth, sampleHeight);
+  const { data } = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight);
+  let darkPixels = 0;
+  let opaquePixels = 0;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const alpha = data[index + 3];
+    if (alpha < 16) continue;
+    opaquePixels += 1;
+    const luminance = 0.2126 * data[index] + 0.7152 * data[index + 1] + 0.0722 * data[index + 2];
+    if (luminance < 10) darkPixels += 1;
+  }
+
+  return opaquePixels > 256 && darkPixels / opaquePixels > 0.94;
+};
+
+const encodedImageLooksMostlyBlack = async (dataUrl: string) => {
+  const image = await loadImage(dataUrl);
+  const width = Math.min(image.width || 64, 96);
+  const height = Math.min(image.height || 64, 96);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return false;
+  context.drawImage(image, 0, 0, width, height);
+  return canvasLooksMostlyBlack(context, width, height);
+};
+
+const getImageExtension = (mimeType: string) => {
+  if (mimeType === "image/webp") return "webp";
+  if (mimeType === "image/png") return "png";
+  return "jpg";
+};
+
+const createVisibleEncodedImage = async (canvas: HTMLCanvasElement) => {
+  const maxDataUrlLength = MAX_IMAGE_BYTES * 1.37;
+  const candidates: Array<{ type: string; quality?: number }> = [
+    { type: "image/jpeg", quality: 0.76 },
+    { type: "image/jpeg", quality: 0.69 },
+    { type: "image/jpeg", quality: 0.62 },
+    { type: "image/jpeg", quality: 0.55 },
+    { type: "image/jpeg", quality: 0.48 },
+    { type: "image/webp", quality: 0.82 },
+    { type: "image/webp", quality: 0.72 },
+    { type: "image/webp", quality: 0.62 },
+    { type: "image/webp", quality: 0.52 },
+    { type: "image/png" },
+  ];
+
+  for (const candidate of candidates) {
+    const dataUrl = canvas.toDataURL(candidate.type, candidate.quality);
+    if (!dataUrl.startsWith(`data:${candidate.type}`)) continue;
+    if (dataUrl.length > maxDataUrlLength) continue;
+    if (await encodedImageLooksMostlyBlack(dataUrl)) continue;
+    return {
+      dataUrl,
+      tipo: candidate.type,
+    };
+  }
+
+  throw new Error("La imagen se proceso negra en este dispositivo. Toma una captura normal o recorta la foto antes de subirla.");
+};
+
 const compressImageFile = async (file: File) => {
   const objectUrl = URL.createObjectURL(file);
-  let dataUrl = "";
+  let encodedImage: { dataUrl: string; tipo: string } | null = null;
   try {
     let image: HTMLImageElement;
     try {
@@ -467,32 +605,52 @@ const compressImageFile = async (file: File) => {
     canvas.height = height;
     const context = canvas.getContext("2d");
     if (!context) throw new Error("No se pudo comprimir la imagen.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
     context.drawImage(image, 0, 0, width, height);
-
-    let quality = 0.76;
-    dataUrl = canvas.toDataURL("image/jpeg", quality);
-    while (dataUrl.length > MAX_IMAGE_BYTES * 1.37 && quality > 0.46) {
-      quality -= 0.07;
-      dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (canvasLooksMostlyBlack(context, width, height)) {
+      throw new Error("La imagen se proceso negra en este dispositivo. Toma una captura normal o recorta la foto antes de subirla.");
     }
+
+    encodedImage = await createVisibleEncodedImage(canvas);
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
 
-  if (dataUrl.length > MAX_IMAGE_BYTES * 1.37) {
+  if (!encodedImage || encodedImage.dataUrl.length > MAX_IMAGE_BYTES * 1.37) {
     throw new Error("La imagen sigue siendo muy pesada. Envia una captura mas liviana o recortada.");
   }
 
+  const extension = getImageExtension(encodedImage.tipo);
   return {
-    dataUrl,
-    tipo: "image/jpeg",
-    tamano: Math.round((dataUrl.length * 3) / 4),
-    nombre: file.name.replace(/\.[^.]+$/, "") + ".jpg",
+    dataUrl: encodedImage.dataUrl,
+    tipo: encodedImage.tipo,
+    tamano: Math.round((encodedImage.dataUrl.length * 3) / 4),
+    nombre: file.name.replace(/\.[^.]+$/, "") + `.${extension}`,
   };
 };
 
 const createComprobanteAdjunto = async (file: File): Promise<ComprobanteAdjunto> => {
   if (isImageFile(file)) {
+    if (canUploadOriginalImage(file)) {
+      const dataUrl = await readFileAsDataUrl(file);
+      if (await encodedImageLooksMostlyBlack(dataUrl)) {
+        throw new Error("La imagen se ve negra en este dispositivo. Toma una captura normal o recorta la foto antes de subirla.");
+      }
+      const tipo = getOriginalImageType(file);
+      const createdAt = new Date().toISOString();
+      const uploaded = await uploadFirebaseAsset("comprobantes", file, tipo, file.name);
+
+      return {
+        nombre: file.name,
+        tipo,
+        tamano: file.size,
+        createdAt,
+        ...uploaded,
+        storageProvider: "firebase" as const,
+      };
+    }
+
     const image = await compressImageFile(file);
     const createdAt = new Date().toISOString();
     const uploaded = await uploadFirebaseAsset(
@@ -1890,9 +2048,14 @@ function App() {
       <SectionBanner tab={tab} periodo={periodo} totals={totals} cesTotals={cesTotals} />
 
       {(cloudStatus === "saving" || cloudStatus === "connecting") && (
-        <div className={`sync-activity ${cloudStatus}`} role="status" aria-live="polite">
-          <span className="inline-spinner" aria-hidden="true" />
-          <strong>{cloudStatus === "saving" ? `Guardando cambios en ${cloudBackendName}` : `Reconectando con ${cloudBackendName}`}</strong>
+        <div className={`sync-activity ${cloudStatus}`} role="status" aria-live="assertive">
+          <div className="sync-activity-card">
+            <span className="inline-spinner" aria-hidden="true" />
+            <div>
+              <strong>{cloudStatus === "saving" ? `Guardando cambios en ${cloudBackendName}` : `Reconectando con ${cloudBackendName}`}</strong>
+              <small>{cloudStatus === "saving" ? "Espera un momento antes de tocar otro comprobante." : "Manteniendo los cambios hasta recuperar conexion."}</small>
+            </div>
+          </div>
         </div>
       )}
       {cloudStatus === "error" && cloudError && (
@@ -3068,8 +3231,8 @@ function PublicEmprendimientoForm({
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!files.length) return;
-    if (form.fotos.length + files.length > 3) {
-      setFotoError("Puedes enviar hasta 3 fotos en este formulario.");
+    if (form.fotos.length + files.length > MAX_EMPRENDIMIENTO_FOTOS) {
+      setFotoError(`Puedes enviar hasta ${MAX_EMPRENDIMIENTO_FOTOS} fotos en este formulario.`);
       return;
     }
     setFotoError("");
@@ -3251,10 +3414,10 @@ function PublicEmprendimientoForm({
           <span>5</span>
           <strong>Fotos y nota final</strong>
         </div>
-        <label className={fotoLoading || form.fotos.length >= 3 ? "secondary-button disabled public-photo-button" : "secondary-button public-photo-button"}>
+        <label className={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS ? "secondary-button disabled public-photo-button" : "secondary-button public-photo-button"}>
           {fotoLoading ? <span className="inline-spinner" aria-hidden="true" /> : <ImagePlus size={16} />}
           {fotoLoading ? "Redimensionando fotos" : "Agregar fotos"}
-          <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={fotoLoading || form.fotos.length >= 3} onChange={handleFotos} />
+          <input type="file" accept={ACCEPTED_FOTO_TYPES} multiple disabled={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS} onChange={handleFotos} />
         </label>
         {fotoLoading && <small className="attachment-help">Optimizando imagenes antes de guardarlas en la nube.</small>}
         {fotoError && <small className="attachment-error">{fotoError}</small>}
@@ -3460,6 +3623,7 @@ function ComprobanteAdjuntoInput({
 }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [removingKey, setRemovingKey] = useState("");
   const [previewAdjunto, setPreviewAdjunto] = useState<ComprobanteAdjunto | null>(null);
   const [zoom, setZoom] = useState(1);
   const currentAdjuntos = (adjuntos ?? []).slice(0, 2);
@@ -3484,6 +3648,7 @@ function ComprobanteAdjuntoInput({
   };
 
   const handleRemove = async (adjunto: ComprobanteAdjunto) => {
+    if (removingKey) return;
     const confirmed = await confirmarAccionCritica(`Quitar "${adjunto.nombre}" de este registro? El comprobante dejara de estar disponible y esta accion quedara en auditoria.`, {
       title: "Semilla Emprende Negrete advierte",
       tone: "danger",
@@ -3491,8 +3656,10 @@ function ComprobanteAdjuntoInput({
     });
     if (!confirmed) return;
     const key = getComprobanteKey(adjunto);
+    setRemovingKey(key);
     setPreviewAdjunto((current) => (current && getComprobanteKey(current) === key ? null : current));
     onChange(currentAdjuntos.filter((item) => getComprobanteKey(item) !== key));
+    window.setTimeout(() => setRemovingKey(""), 900);
   };
 
   return (
@@ -3508,6 +3675,7 @@ function ComprobanteAdjuntoInput({
               setPreviewAdjunto(adjunto);
             }}
             onRemove={() => void handleRemove(adjunto)}
+            removing={removingKey === getComprobanteKey(adjunto)}
           />
         ))}
         {!currentAdjuntos.length && (
@@ -3582,11 +3750,13 @@ function AttachmentCard({
   index,
   onPreview,
   onRemove,
+  removing = false,
 }: {
   adjunto: ComprobanteAdjunto;
   index: number;
   onPreview: () => void;
   onRemove: () => void;
+  removing?: boolean;
 }) {
   const source = getAttachmentSource(adjunto);
   const isAvailable = Boolean(source);
@@ -3607,11 +3777,11 @@ function AttachmentCard({
         )}
       </div>
       <div className="attachment-card-actions">
-        <button type="button" className="secondary-button compact" onClick={onPreview} disabled={!isAvailable}>
+        <button type="button" className="secondary-button compact" onClick={onPreview} disabled={!isAvailable || removing}>
           <Eye size={16} /> Ver
         </button>
-        <button type="button" className="danger-button compact" onClick={onRemove}>
-          <Trash2 size={16} /> Quitar
+        <button type="button" className="danger-button compact" onClick={onRemove} disabled={removing}>
+          {removing ? <span className="inline-spinner" aria-hidden="true" /> : <Trash2 size={16} />} {removing ? "Quitando" : "Quitar"}
         </button>
       </div>
     </div>
@@ -4004,7 +4174,8 @@ function PersonaPanel({
     .map((cobro) => ({
       cobro,
       periodo: state.periodos.find((periodo) => periodo.id === cobro.periodoId),
-    }));
+    }))
+    .sort((a, b) => (a.periodo?.numeroCuota ?? 0) - (b.periodo?.numeroCuota ?? 0));
   const totals = getPeriodoTotals(historial.map(({ cobro }) => cobro));
   const contactoCobro =
     historial.find(({ cobro }) => cobro.estadoPago === "atrasado") ??
@@ -4110,36 +4281,52 @@ function PersonaPanel({
       </div>
 
       <div className="history-list">
-        {historial.map(({ cobro, periodo }) => (
-          <div key={cobro.id} className="history-row">
-            <div>
-              <strong>Cuota {periodo?.numeroCuota}</strong>
-              <span><CalendarDays size={15} /> {periodo ? formatDate(periodo.fechaVencimiento) : "Sin periodo"}</span>
+        {historial.map(({ cobro, periodo }) => {
+          const comprobantesAdjuntos = getComprobantesAdjuntos(cobro.comprobanteAdjunto, cobro.comprobantesAdjuntos);
+          const showReceipts = paymentHasReceiptsVisible(cobro.estadoPago, cobro.montoPagado, comprobantesAdjuntos);
+
+          return (
+            <div key={cobro.id} className="history-row">
+              <div>
+                <strong>Cuota {periodo?.numeroCuota}</strong>
+                <span><CalendarDays size={15} /> {periodo ? formatDate(periodo.fechaVencimiento) : "Sin periodo"}</span>
+              </div>
+              <div>
+                <div className="history-status-line">
+                  <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
+                  {showReceipts && <HistoryReceiptLinks adjuntos={comprobantesAdjuntos} />}
+                </div>
+                <strong>{formatCurrency(cobro.montoPagado)} / {formatCurrency(cobro.totalEsperado)}</strong>
+              </div>
             </div>
-            <div>
-              <span className={`badge ${cobro.estadoPago}`}>{estadoLabels[cobro.estadoPago]}</span>
-              <strong>{formatCurrency(cobro.montoPagado)} / {formatCurrency(cobro.totalEsperado)}</strong>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {state.pagosCes.some((pago) => pago.emprendedorId === persona.id) && (
         <div className="history-list ces-history">
           {state.pagosCes
             .filter((pago) => pago.emprendedorId === persona.id)
-            .map((pago) => (
-              <div key={pago.id} className="history-row">
-                <div>
-                  <strong>Pago CES</strong>
-                  <span><Landmark size={15} /> Vence {formatDate(pago.fechaVencimiento)}</span>
+            .map((pago) => {
+              const comprobantesAdjuntos = getComprobantesAdjuntos(pago.comprobanteAdjunto, pago.comprobantesAdjuntos);
+              const showReceipts = paymentHasReceiptsVisible(pago.estadoPago, pago.montoPagado, comprobantesAdjuntos);
+
+              return (
+                <div key={pago.id} className="history-row">
+                  <div>
+                    <strong>Pago CES</strong>
+                    <span><Landmark size={15} /> Vence {formatDate(pago.fechaVencimiento)}</span>
+                  </div>
+                  <div>
+                    <div className="history-status-line">
+                      <span className={`badge ${pago.estadoPago}`}>{estadoLabels[pago.estadoPago]}</span>
+                      {showReceipts && <HistoryReceiptLinks adjuntos={comprobantesAdjuntos} />}
+                    </div>
+                    <strong>{formatCurrency(pago.montoPagado)} / {formatCurrency(pago.totalEsperado)}</strong>
+                  </div>
                 </div>
-                <div>
-                  <span className={`badge ${pago.estadoPago}`}>{estadoLabels[pago.estadoPago]}</span>
-                  <strong>{formatCurrency(pago.montoPagado)} / {formatCurrency(pago.totalEsperado)}</strong>
-                </div>
-              </div>
-            ))}
+              );
+            })}
         </div>
       )}
 
@@ -4569,6 +4756,10 @@ function SolicitudRevisionModal({
   }));
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fotoError, setFotoError] = useState("");
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const [fotoPreview, setFotoPreview] = useState<EmprendimientoFoto | null>(null);
+  const [fotoZoom, setFotoZoom] = useState(1);
   const selectedPersona = personas.find((persona) => persona.id === form.emprendedorId);
   const errors = {
     emprendedorId: form.emprendedorId ? "" : "Asocia la solicitud a una persona registrada.",
@@ -4595,9 +4786,53 @@ function SolicitudRevisionModal({
     }));
   };
 
+  const handleFotos = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (form.fotos.length + files.length > MAX_EMPRENDIMIENTO_FOTOS) {
+      setFotoError(`Puedes guardar hasta ${MAX_EMPRENDIMIENTO_FOTOS} fotos para publicar.`);
+      return;
+    }
+
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      const fotos = await Promise.all(files.map((file) => createEmprendimientoFoto(file, "solicitudes")));
+      updateForm("fotos", [...form.fotos, ...fotos]);
+    } catch (error) {
+      setFotoError(error instanceof Error ? error.message : "No se pudo preparar la foto.");
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const handleReemplazarFoto = async (id: string, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setFotoError("");
+    setFotoLoading(true);
+    try {
+      const foto = await createEmprendimientoFoto(file, "solicitudes");
+      updateForm("fotos", form.fotos.map((item) => (item.id === id ? foto : item)));
+      setFotoPreview((current) => (current?.id === id ? foto : current));
+    } catch (error) {
+      setFotoError(error instanceof Error ? error.message : "No se pudo reemplazar la foto.");
+    } finally {
+      setFotoLoading(false);
+    }
+  };
+
+  const quitarFoto = (id: string) => {
+    updateForm("fotos", form.fotos.filter((foto) => foto.id !== id));
+    setFotoPreview((current) => (current?.id === id ? null : current));
+  };
+
   const submit = async (mode: "save" | "publish") => {
     setTouched(true);
-    if (hasErrors || saving) return;
+    if (hasErrors || saving || fotoLoading) return;
     setSaving(true);
     const normalized: SolicitudReviewForm = {
       ...form,
@@ -4717,24 +4952,123 @@ function SolicitudRevisionModal({
         </div>
 
         <section className="review-photo-strip">
-          <strong>Fotos recibidas</strong>
-          <div>
-            {form.fotos.map((foto) => (
-              <figure key={foto.id}>
-                <img src={getAttachmentSource(foto)} alt={foto.nombre} />
-                <figcaption>{foto.nombre}</figcaption>
-              </figure>
-            ))}
-            {!form.fotos.length && <span>Sin fotos recibidas.</span>}
+          <div className="review-photo-head">
+            <div>
+              <p className="eyebrow">Fotos</p>
+              <strong>{form.fotos.length}/{MAX_EMPRENDIMIENTO_FOTOS} para publicar</strong>
+            </div>
+            <label className={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS ? "secondary-button disabled" : "secondary-button"}>
+              {fotoLoading ? <span className="inline-spinner" aria-hidden="true" /> : <ImagePlus size={16} />}
+              {fotoLoading ? "Subiendo" : "Agregar fotos"}
+              <input
+                type="file"
+                accept={ACCEPTED_FOTO_TYPES}
+                multiple
+                onChange={handleFotos}
+                disabled={fotoLoading || form.fotos.length >= MAX_EMPRENDIMIENTO_FOTOS}
+              />
+            </label>
+          </div>
+          {fotoLoading && <small className="attachment-help">Optimizando y guardando imagenes en Firebase.</small>}
+          {fotoError && <small className="attachment-error">{fotoError}</small>}
+          <div className="review-photo-list">
+            {form.fotos.map((foto, index) => {
+              const isAvailable = Boolean(getAttachmentSource(foto));
+              return (
+                <div className={isAvailable ? "attachment-card review-photo-card" : "attachment-card review-photo-card unavailable"} key={foto.id}>
+                  <FileImage size={17} />
+                  <div>
+                    <strong>{index + 1}. {foto.nombre}</strong>
+                    <span>{formatFileSize(foto.tamano)} · {formatDateTime(foto.createdAt)}</span>
+                    <small className={`storage-provider ${foto.url && foto.storageProvider === "firebase" ? "firebase" : "local"}`}>
+                      {getAttachmentProviderLabel(foto)}
+                    </small>
+                    {!isAvailable && (
+                      <small className="attachment-missing">
+                        La referencia llego sin imagen visible. Reemplazala con una foto nueva.
+                      </small>
+                    )}
+                  </div>
+                  <div className="attachment-card-actions review-photo-actions">
+                    <button
+                      type="button"
+                      className="secondary-button compact"
+                      onClick={() => {
+                        setFotoZoom(1);
+                        setFotoPreview(foto);
+                      }}
+                      disabled={!isAvailable}
+                    >
+                      <Eye size={16} /> Ver
+                    </button>
+                    <label className={fotoLoading ? "secondary-button compact disabled" : "secondary-button compact"}>
+                      <Upload size={16} /> Reemplazar
+                      <input
+                        type="file"
+                        accept={ACCEPTED_FOTO_TYPES}
+                        onChange={(event) => handleReemplazarFoto(foto.id, event)}
+                        disabled={fotoLoading}
+                      />
+                    </label>
+                    <button type="button" className="danger-button compact" onClick={() => quitarFoto(foto.id)} disabled={fotoLoading}>
+                      <Trash2 size={16} /> Quitar
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {!form.fotos.length && (
+              <div className="attachment-card empty">
+                <FileImage size={17} />
+                <div>
+                  <strong>Sin fotos recibidas</strong>
+                  <span>Puedes subirlas aqui si la persona las envio por otro medio.</span>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
+        {fotoPreview && (
+          <div className="modal-backdrop" role="presentation">
+            <section className="attachment-preview-modal" role="dialog" aria-modal="true" aria-labelledby="review-photo-preview-title">
+              <header>
+                <div>
+                  <p className="eyebrow">Foto de emprendimiento</p>
+                  <h2 id="review-photo-preview-title">{fotoPreview.nombre}</h2>
+                  <span>{formatFileSize(fotoPreview.tamano)} · {formatDateTime(fotoPreview.createdAt)}</span>
+                </div>
+                <button className="icon-button" onClick={() => setFotoPreview(null)} aria-label="Cerrar foto">
+                  <X size={20} />
+                </button>
+              </header>
+              <div className="preview-toolbar">
+                <div className="zoom-controls" aria-label="Zoom de la foto">
+                  <button type="button" onClick={() => setFotoZoom((current) => Math.max(current - 0.2, 0.6))} aria-label="Disminuir zoom">
+                    <ZoomOut size={18} />
+                  </button>
+                  <span>{Math.round(fotoZoom * 100)}%</span>
+                  <button type="button" onClick={() => setFotoZoom((current) => Math.min(current + 0.2, 2.4))} aria-label="Aumentar zoom">
+                    <ZoomIn size={18} />
+                  </button>
+                </div>
+                <a className="secondary-button" href={getAttachmentSource(fotoPreview)} download={fotoPreview.nombre}>
+                  <Download size={16} /> Descargar
+                </a>
+              </div>
+              <div className="preview-stage">
+                <img src={getAttachmentSource(fotoPreview)} alt={`Foto ${fotoPreview.nombre}`} style={{ transform: `scale(${fotoZoom})` }} />
+              </div>
+            </section>
+          </div>
+        )}
+
         {touched && hasErrors && <div className="modal-error">Revisa los campos marcados antes de guardar o publicar.</div>}
         <footer>
-          <button className="secondary-button" onClick={() => submit("save")} disabled={saving}>
+          <button className="secondary-button" onClick={() => submit("save")} disabled={saving || fotoLoading}>
             <Check size={16} /> Guardar revision
           </button>
-          <button className="primary-button" onClick={() => submit("publish")} disabled={saving || solicitud.estado === "convertida"}>
+          <button className="primary-button" onClick={() => submit("publish")} disabled={saving || fotoLoading || solicitud.estado === "convertida"}>
             <ShieldCheck size={16} /> {solicitud.estado === "convertida" ? "Ya publicada" : "Aprobar y publicar"}
           </button>
         </footer>
