@@ -1,5 +1,6 @@
 import {
   createSolicitudEmprendimiento as createFirebaseSolicitudEmprendimiento,
+  deleteSolicitudEmprendimiento as deleteFirebaseSolicitudEmprendimiento,
   readSolicitudesEmprendimiento as readFirebaseSolicitudesEmprendimiento,
   subscribeSolicitudesEmprendimiento as subscribeFirebaseSolicitudesEmprendimiento,
   updateSolicitudEmprendimiento as updateFirebaseSolicitudEmprendimiento,
@@ -21,3 +22,6 @@ export const updateSolicitudEmprendimiento = (
   id: string,
   patch: Partial<Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "origen">>,
 ) => updateFirebaseSolicitudEmprendimiento(id, patch);
+
+export const deleteSolicitudEmprendimiento = (solicitud: Pick<SolicitudEmprendimiento, "id" | "fotos">) =>
+  deleteFirebaseSolicitudEmprendimiento(solicitud);

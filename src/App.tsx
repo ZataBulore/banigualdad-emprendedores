@@ -57,7 +57,7 @@ import {
   subscribeFirebaseAuthState,
   uploadFirebaseAsset,
 } from "./services/firebase";
-import { createSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
+import { createSolicitudEmprendimiento, deleteSolicitudEmprendimiento, subscribeSolicitudesEmprendimiento, updateSolicitudEmprendimiento } from "./services/ventureRequests";
 import type { Centro, CobroSemanal, ComprobanteAdjunto, ConfiguracionCes, ConfiguracionMicrocredito, ConfiguracionSeguridad, CuentaTransferencia, Emprendedor, Emprendimiento, EmprendimientoFoto, EstadoAsistencia, EstadoEmprendimiento, EstadoPago, EstadoPersona, EstadoSolicitudEmprendimiento, MetodoPago, MovimientoHistorial, PagoCes, Periodo, Reunion, ReunionFoto, SolicitudEmprendimiento, TesoreriaState } from "./types/tesoreria";
 import { formatCurrency, formatDate } from "./utils/currency";
 import { getPeriodoTotals } from "./utils/totals";
@@ -68,7 +68,7 @@ type PublicRoute = "home" | "form" | "admin";
 type FiltroEstado = "todos" | EstadoPago;
 type PersonaForm = Pick<Emprendedor, "nombre" | "rut" | "whatsapp" | "whatsappSecundario" | "nombreContactoSecundario" | "estado" | "fechaBaja" | "motivoBaja" | "observacionBaja" | "creditoOriginal" | "anillo" | "notas">;
 type EmprendimientoForm = Omit<Emprendimiento, "id" | "createdAt" | "updatedAt">;
-type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen">;
+type SolicitudReviewForm = Omit<SolicitudEmprendimiento, "id" | "createdAt" | "updatedAt" | "estado" | "origen" | "emprendimientoPublicadoId">;
 type CobroEditForm = Pick<CobroSemanal, "cuota" | "seguro" | "montoPagado" | "estadoPago" | "fechaPago" | "metodoPago" | "referenciaPago" | "comprobanteAdjunto" | "comprobantesAdjuntos" | "observacion">;
 type AuthUser = { email: string; nombre: string; foto?: string; authSource?: "google"; sessionVersion?: number };
 type GroupPaymentMessageKey = "amable" | "cercano" | "urgente" | "regularizar" | "transferencia";
@@ -1809,6 +1809,19 @@ function App() {
     state.emprendedores.find((persona) => persona.id === form.emprendedorId) ??
     state.emprendedores.find((persona) => cleanRut(persona.rut) === cleanRut(form.rut));
 
+  const resolveEmprendimientoPublicado = (solicitud: SolicitudEmprendimiento) => {
+    if (solicitud.emprendimientoPublicadoId) {
+      const linked = state.emprendimientos.find((item) => item.id === solicitud.emprendimientoPublicadoId);
+      if (linked) return linked;
+    }
+
+    const nombreSolicitud = solicitud.nombreEmprendimiento.trim().toLowerCase();
+    return state.emprendimientos.find((item) =>
+      item.emprendedorId === solicitud.emprendedorId &&
+      item.nombre.trim().toLowerCase() === nombreSolicitud,
+    );
+  };
+
   const guardarRevisionSolicitud = async (solicitud: SolicitudEmprendimiento, form: SolicitudReviewForm) => {
     await updateSolicitudEmprendimiento(solicitud.id, {
       ...form,
@@ -1854,14 +1867,6 @@ function App() {
       return;
     }
 
-    await updateSolicitudEmprendimiento(solicitud.id, {
-      ...form,
-      emprendedorId: persona.id,
-      rut: formatRut(persona.rut),
-      creditoOriginal: persona.creditoOriginal,
-      estado: "convertida",
-    });
-
     const emprendimientoId = crearEmprendimiento({
       emprendedorId: persona.id,
       nombre: form.nombreEmprendimiento.trim(),
@@ -1884,6 +1889,15 @@ function App() {
       ].filter(Boolean).join(" | "),
     });
 
+    await updateSolicitudEmprendimiento(solicitud.id, {
+      ...form,
+      emprendedorId: persona.id,
+      rut: formatRut(persona.rut),
+      creditoOriginal: persona.creditoOriginal,
+      emprendimientoPublicadoId: emprendimientoId,
+      estado: "convertida",
+    });
+
     registrarMovimiento({
       tipo: "emprendimiento",
       accion: "Solicitud de emprendimiento publicada",
@@ -1896,6 +1910,46 @@ function App() {
     await informarSistema("El emprendimiento fue publicado y ya queda disponible en la pagina principal.", {
       tone: "success",
     });
+  };
+
+  const bajarPublicacionSolicitud = async (solicitud: SolicitudEmprendimiento) => {
+    const emprendimiento = resolveEmprendimientoPublicado(solicitud);
+    if (!emprendimiento) {
+      await informarSistema("No encontre la ficha publica vinculada a esta solicitud. Puedes revisar si ya fue eliminada manualmente desde la central de emprendimientos.", {
+        tone: "warning",
+      });
+      return;
+    }
+
+    const confirmed = await confirmarAccionCritica(`Bajar "${emprendimiento.nombre}" de la vitrina publica? La solicitud volvera a revision para que puedas corregir datos o reemplazar fotos antes de publicarla otra vez.`, {
+      title: "Semilla Emprende Negrete advierte",
+      tone: "warning",
+      confirmLabel: "Bajar publicacion",
+    });
+    if (!confirmed) return;
+
+    try {
+      await updateSolicitudEmprendimiento(solicitud.id, {
+        estado: "revisada",
+        emprendimientoPublicadoId: "",
+      });
+      eliminarEmprendimiento(emprendimiento.id);
+      registrarMovimiento({
+        tipo: "emprendimiento",
+        accion: "Publicacion bajada a revision",
+        detalle: `${emprendimiento.nombre} dejo de estar visible en la vitrina publica. La solicitud ${solicitud.id} quedo nuevamente en revision.`,
+        entidadId: solicitud.id,
+        personaId: emprendimiento.emprendedorId,
+        personaNombre: solicitud.nombreContacto,
+      });
+      await informarSistema("La publicacion fue bajada de la vitrina y la solicitud quedo nuevamente para revision.", {
+        tone: "success",
+      });
+    } catch (error) {
+      await informarSistema(error instanceof Error ? error.message : "No se pudo bajar la publicacion.", {
+        tone: "danger",
+      });
+    }
   };
 
   if (!isAdminRoute) {
@@ -1974,15 +2028,21 @@ function App() {
               <LogOut size={16} />
             </button>
           </div>
-          <select value={periodo?.id} onChange={(event) => setPeriodoId(event.target.value)} aria-label="Seleccionar semana de cobro">
-            {state.periodos.map((item) => (
-              <option key={item.id} value={item.id}>
-                Semana cuota {item.numeroCuota} · {formatDate(item.fechaVencimiento)}
-              </option>
-            ))}
-          </select>
         </div>
       </section>
+
+      <div className="week-strip top-week-strip" role="list" aria-label="Semanas de cobro">
+        {state.periodos.map((item) => (
+          <button
+            key={item.id}
+            className={item.id === periodo?.id ? "week-pill active" : "week-pill"}
+            onClick={() => setPeriodoId(item.id)}
+          >
+            <strong>Cuota {item.numeroCuota}</strong>
+            <span>{formatDate(item.fechaVencimiento)}</span>
+          </button>
+        ))}
+      </div>
 
       {periodo && (
         <section className="period-strip">
@@ -2068,19 +2128,6 @@ function App() {
 
       {tab === "cobros" && (
         <section className="workspace">
-          <div className="week-strip" role="list" aria-label="Semanas de cobro">
-            {state.periodos.map((item) => (
-              <button
-                key={item.id}
-                className={item.id === periodo?.id ? "week-pill active" : "week-pill"}
-                onClick={() => setPeriodoId(item.id)}
-              >
-                <strong>Cuota {item.numeroCuota}</strong>
-                <span>{formatDate(item.fechaVencimiento)}</span>
-              </button>
-            ))}
-          </div>
-
           <section className="transfer-account-card" aria-label="Cuenta para transferencias del ciclo">
             <div className="transfer-account-head">
               <span><Landmark size={18} /></span>
@@ -2409,6 +2456,33 @@ function App() {
               });
             }
           }}
+          onSolicitudEliminar={async (solicitud) => {
+            const confirmed = await confirmarAccionCritica(`Eliminar la solicitud "${solicitud.nombreEmprendimiento}"? Se borraran los datos enviados y sus ${solicitud.fotos.length} foto${solicitud.fotos.length === 1 ? "" : "s"} asociada${solicitud.fotos.length === 1 ? "" : "s"}. Pidele a la persona que ingrese nuevamente el formulario si corresponde.`, {
+              title: "Semilla Emprende Negrete advierte",
+              tone: "danger",
+              confirmLabel: "Eliminar solicitud",
+            });
+            if (!confirmed) return;
+
+            try {
+              await deleteSolicitudEmprendimiento(solicitud);
+              registrarMovimiento({
+                tipo: "emprendimiento",
+                accion: "Solicitud de emprendimiento eliminada",
+                detalle: `${solicitud.nombreEmprendimiento || "Solicitud"} fue eliminada desde la tabla de ingresados. Fotos eliminadas: ${solicitud.fotos.length}.`,
+                entidadId: solicitud.id,
+                personaNombre: solicitud.nombreContacto,
+              });
+              await informarSistema("La solicitud fue eliminada. La persona puede ingresar el formulario nuevamente con los datos corregidos.", {
+                tone: "success",
+              });
+            } catch (error) {
+              await informarSistema(error instanceof Error ? error.message : "No se pudo eliminar la solicitud.", {
+                tone: "danger",
+              });
+            }
+          }}
+          onSolicitudBajarPublicacion={bajarPublicacionSolicitud}
         />
       )}
 
@@ -2603,7 +2677,6 @@ const decodeHtmlText = (value = "") => {
   element.innerHTML = value.replace(/<[^>]*>/g, " ");
   return element.value.replace(/\s+/g, " ").trim();
 };
-
 
 const formatNewsDate = (value: string) => {
   const date = new Date(value);
@@ -4494,6 +4567,8 @@ function EmprendimientosPanel({
   onPersona,
   onSolicitudRevisar,
   onSolicitudEstado,
+  onSolicitudEliminar,
+  onSolicitudBajarPublicacion,
 }: {
   emprendimientos: Emprendimiento[];
   totalEmprendimientos: number;
@@ -4510,6 +4585,8 @@ function EmprendimientosPanel({
   onPersona: (personaId: string) => void;
   onSolicitudRevisar: (solicitud: SolicitudEmprendimiento) => void;
   onSolicitudEstado: (id: string, estado: SolicitudEmprendimiento["estado"]) => void;
+  onSolicitudEliminar: (solicitud: SolicitudEmprendimiento) => void;
+  onSolicitudBajarPublicacion: (solicitud: SolicitudEmprendimiento) => void;
 }) {
   const activos = emprendimientos.filter((item) => item.estado === "activo").length;
 
@@ -4561,6 +4638,8 @@ function EmprendimientosPanel({
         error={solicitudesError}
         onRevisar={onSolicitudRevisar}
         onEstado={onSolicitudEstado}
+        onEliminar={onSolicitudEliminar}
+        onBajarPublicacion={onSolicitudBajarPublicacion}
       />
     </section>
   );
@@ -4571,11 +4650,15 @@ function SolicitudesEmprendimientoPanel({
   error,
   onRevisar,
   onEstado,
+  onEliminar,
+  onBajarPublicacion,
 }: {
   solicitudes: SolicitudEmprendimiento[];
   error: string;
   onRevisar: (solicitud: SolicitudEmprendimiento) => void;
   onEstado: (id: string, estado: SolicitudEmprendimiento["estado"]) => void;
+  onEliminar: (solicitud: SolicitudEmprendimiento) => void;
+  onBajarPublicacion: (solicitud: SolicitudEmprendimiento) => void;
 }) {
   const ingresadas = solicitudes.filter((solicitud) => solicitud.estado === "nueva").length;
 
@@ -4618,8 +4701,19 @@ function SolicitudesEmprendimientoPanel({
                 <button className="primary-button" onClick={() => onRevisar(solicitud)}>
                   <Pencil size={15} /> Revisar
                 </button>
-                <button className="secondary-button" onClick={() => onEstado(solicitud.id, "revisada")}>Revisada</button>
-                <button className="danger-button" onClick={() => onEstado(solicitud.id, "descartada")}>Descartar</button>
+                {solicitud.estado === "convertida" ? (
+                  <button className="secondary-button" onClick={() => onBajarPublicacion(solicitud)}>
+                    <RotateCcw size={15} /> Bajar publicacion
+                  </button>
+                ) : (
+                  <>
+                    <button className="secondary-button" onClick={() => onEstado(solicitud.id, "revisada")}>Revisada</button>
+                    <button className="danger-button" onClick={() => onEstado(solicitud.id, "descartada")}>Descartar</button>
+                  </>
+                )}
+                <button className="danger-button" onClick={() => onEliminar(solicitud)}>
+                  <Trash2 size={15} /> Eliminar
+                </button>
               </div>
             </footer>
           </article>

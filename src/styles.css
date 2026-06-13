@@ -1437,7 +1437,6 @@ label.secondary-button:hover,
   text-transform: uppercase;
 }
 
-.hero-actions select,
 .search-box,
 .amount-input input,
 .detail-grid input,
@@ -1455,13 +1454,6 @@ label.secondary-button:hover,
   background: var(--surface);
   color: var(--text);
   outline: none;
-}
-
-.hero-actions select {
-  min-height: 40px;
-  padding: 0 10px;
-  font-size: 0.86rem;
-  font-weight: 650;
 }
 
 .period-strip {
@@ -1740,8 +1732,13 @@ label.secondary-button:hover,
   display: flex;
   gap: 7px;
   overflow-x: auto;
-  margin-bottom: 10px;
+  margin: 8px 0 10px;
   padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.top-week-strip {
+  margin-top: 10px;
 }
 
 .week-pill {
@@ -4895,10 +4892,6 @@ textarea:disabled {
     font-size: 0.62rem;
   }
 
-  .hero-actions select {
-    min-height: 36px;
-  }
-
   .hero-actions {
     display: contents;
   }
@@ -4963,12 +4956,6 @@ textarea:disabled {
     min-height: 30px;
     padding: 0 9px;
     font-size: 0.7rem;
-  }
-
-  .hero-actions select {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: stretch;
   }
 
   .period-strip {

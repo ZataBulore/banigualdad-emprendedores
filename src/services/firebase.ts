@@ -1,8 +1,8 @@
 import { FirebaseError, initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import type { User } from "firebase/auth";
-import { addDoc, collection, doc, getDoc, getDocs, getFirestore, initializeFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
-import { getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, initializeFirestore, onSnapshot, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
+import { deleteObject, getDownloadURL, getStorage, ref, uploadBytes } from "firebase/storage";
 import type { SolicitudEmprendimiento, TesoreriaState } from "../types/tesoreria";
 
 const getEnvValue = (key: string) => String(import.meta.env[key] ?? "").trim();
@@ -321,6 +321,7 @@ const mapSolicitud = (id: string, data: Record<string, unknown>): SolicitudEmpre
   redesSociales: String(data.redesSociales ?? ""),
   necesidades: Array.isArray(data.necesidades) ? data.necesidades.map(String) : [],
   fotos: Array.isArray(data.fotos) ? data.fotos as SolicitudEmprendimiento["fotos"] : [],
+  emprendimientoPublicadoId: data.emprendimientoPublicadoId ? String(data.emprendimientoPublicadoId) : "",
   estado: data.estado === "revisada" || data.estado === "convertida" || data.estado === "descartada" ? data.estado : "nueva",
   origen: "formulario-publico",
   notas: String(data.notas ?? ""),
@@ -393,5 +394,42 @@ export const updateSolicitudEmprendimiento = async (
       { merge: true },
     ),
     "Firebase no respondio al actualizar la solicitud.",
+  );
+};
+
+export const deleteSolicitudEmprendimiento = async (solicitud: Pick<SolicitudEmprendimiento, "id" | "fotos">) => {
+  if (!firestore) throw new Error("Firebase no esta configurado.");
+
+  const deleteOperations = solicitud.fotos
+    .map((foto) => foto.storagePath)
+    .filter((storagePath): storagePath is string => Boolean(storagePath))
+    .map(async (storagePath) => {
+      try {
+        if (storagePath.startsWith("firestore-assets/")) {
+          const assetId = storagePath.split("/")[1];
+          if (assetId) {
+            await withFirebaseTimeout(
+              deleteDoc(doc(firestore, FIREBASE_ASSETS_COLLECTION, assetId)),
+              "Firebase no respondio al borrar una foto de la solicitud.",
+            );
+          }
+          return;
+        }
+
+        if (storage) {
+          await withFirebaseTimeout(
+            deleteObject(ref(storage, storagePath)),
+            "Firebase Storage no respondio al borrar una foto de la solicitud.",
+          );
+        }
+      } catch {
+        // The request record is the source of truth; keep deleting it even if an old file is already missing.
+      }
+    });
+
+  await Promise.all(deleteOperations);
+  await withFirebaseTimeout(
+    deleteDoc(doc(firestore, FIREBASE_SOLICITUDES_COLLECTION, solicitud.id)),
+    "Firebase no respondio al eliminar la solicitud.",
   );
 };

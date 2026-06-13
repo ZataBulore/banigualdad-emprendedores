@@ -156,6 +156,7 @@ export interface SolicitudEmprendimiento {
   redesSociales: string;
   necesidades: string[];
   fotos: EmprendimientoFoto[];
+  emprendimientoPublicadoId?: string;
   estado: EstadoSolicitudEmprendimiento;
   origen: "formulario-publico";
   notas?: string;
