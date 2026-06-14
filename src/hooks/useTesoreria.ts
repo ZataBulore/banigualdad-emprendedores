@@ -528,14 +528,6 @@ const loadState = (): TesoreriaState => {
   }
 };
 
-const getStateTime = (state: TesoreriaState | null | undefined) => {
-  const value = state?.updatedAt ? Date.parse(state.updatedAt) : 0;
-  return Number.isFinite(value) ? value : 0;
-};
-
-const isLocalStateNewer = (localState: TesoreriaState, remoteState: TesoreriaState) =>
-  getStateTime(localState) > getStateTime(remoteState) + 1000;
-
 const crearEstadoOperativoInicial = (current: TesoreriaState): TesoreriaState => {
   const emprendedores = current.emprendedores.length ? current.emprendedores : tesoreriaInicial.emprendedores;
   const configuracion = current.configuracion ?? tesoreriaInicial.configuracion;
@@ -577,7 +569,6 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
   const applyingRemoteRef = useRef(false);
   const pendingLocalSaveRef = useRef(false);
   const remoteReadyRef = useRef(false);
-  const hasStoredLocalStateRef = useRef(Boolean(window.localStorage.getItem(STORAGE_KEY)));
   const saveTimeoutRef = useRef<number | null>(null);
   const retryTimeoutRef = useRef<number | null>(null);
 
@@ -634,16 +625,9 @@ export const useTesoreria = (options: { syncEnabled?: boolean; publicReadEnabled
         if (cancelled) return;
         if (remoteState) {
           const migratedRemoteState = migrateState(remoteState);
-          if (hasStoredLocalStateRef.current && isLocalStateNewer(state, migratedRemoteState)) {
-            pendingLocalSaveRef.current = true;
-            setCloudStatus("saving");
-            await saveRemoteState(state, options.updatedBy);
-            pendingLocalSaveRef.current = false;
-          } else {
-            pendingLocalSaveRef.current = false;
-            applyingRemoteRef.current = true;
-            setState(migratedRemoteState);
-          }
+          pendingLocalSaveRef.current = false;
+          applyingRemoteRef.current = true;
+          setState(migratedRemoteState);
         } else {
           pendingLocalSaveRef.current = true;
           setCloudStatus("saving");
