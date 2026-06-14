@@ -3011,6 +3011,7 @@ function PublicHome({
 }) {
   const [busquedaPublica, setBusquedaPublica] = useState("");
   const [rubroActivo, setRubroActivo] = useState("Todos");
+  const [galeriaPublica, setGaleriaPublica] = useState<{ emprendimiento: Emprendimiento; index: number } | null>(null);
   const emprendimientosActivos = emprendimientos.filter((item) => item.estado === "activo");
   const rubros = ["Todos", ...Array.from(new Set(emprendimientosActivos.map((item) => item.rubro).filter(Boolean))).sort()];
   const rubrosPublicados = rubros.length - 1;
@@ -3117,6 +3118,7 @@ function PublicHome({
                 key={emprendimiento.id}
                 emprendimiento={emprendimiento}
                 persona={personasPorId.get(emprendimiento.emprendedorId)}
+                onOpenGallery={(index) => setGaleriaPublica({ emprendimiento, index })}
               />
             ))}
             {!emprendimientosVisibles.length && (
@@ -3127,6 +3129,15 @@ function PublicHome({
               </article>
             )}
           </section>
+
+          {galeriaPublica && (
+            <PublicEmprendimientoGalleryModal
+              emprendimiento={galeriaPublica.emprendimiento}
+              initialIndex={galeriaPublica.index}
+              persona={personasPorId.get(galeriaPublica.emprendimiento.emprendedorId)}
+              onClose={() => setGaleriaPublica(null)}
+            />
+          )}
         </>
       )}
     </>
@@ -3136,11 +3147,14 @@ function PublicHome({
 function PublicEmprendimientoCard({
   emprendimiento,
   persona,
+  onOpenGallery,
 }: {
   emprendimiento: Emprendimiento;
   persona?: Emprendedor;
+  onOpenGallery: (index: number) => void;
 }) {
   const foto = emprendimiento.fotos[0];
+  const totalFotos = emprendimiento.fotos.length;
   const shareText = `${emprendimiento.nombre} - ${emprendimiento.rubro || "Emprendimiento"}${emprendimiento.whatsapp ? ` - WhatsApp ${formatWhatsapp(emprendimiento.whatsapp)}` : ""}`;
   const whatsappHref = emprendimiento.whatsapp ? buildWhatsappUrl(emprendimiento.whatsapp, `Hola, vi tu emprendimiento ${emprendimiento.nombre} en la central y quiero consultar.`) : "";
 
@@ -3152,7 +3166,14 @@ function PublicEmprendimientoCard({
   return (
     <article className="public-venture-card">
       <div className="public-venture-media">
-        {foto ? <img src={getAttachmentSource(foto)} alt={emprendimiento.nombre} /> : <Store size={34} />}
+        {foto ? (
+          <button type="button" className="public-venture-photo-button" onClick={() => onOpenGallery(0)} aria-label={`Ver fotos de ${emprendimiento.nombre}`}>
+            <img src={getAttachmentSource(foto)} alt={emprendimiento.nombre} />
+            <span><FileImage size={15} /> {totalFotos} foto{totalFotos === 1 ? "" : "s"}</span>
+          </button>
+        ) : (
+          <Store size={34} />
+        )}
       </div>
       <div className="public-venture-content">
         <p className="eyebrow">{emprendimiento.rubro || "Emprendimiento"}</p>
@@ -3167,10 +3188,96 @@ function PublicEmprendimientoCard({
         </div>
         <div className="public-card-actions">
           {whatsappHref && <a className="primary-button" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Contactar</a>}
+          {totalFotos > 0 && <button className="secondary-button" onClick={() => onOpenGallery(0)}><FileImage size={16} /> Ver fotos</button>}
           <button className="secondary-button" onClick={copyCard}><Send size={16} /> Compartir</button>
         </div>
       </div>
     </article>
+  );
+}
+
+function PublicEmprendimientoGalleryModal({
+  emprendimiento,
+  persona,
+  initialIndex,
+  onClose,
+}: {
+  emprendimiento: Emprendimiento;
+  persona?: Emprendedor;
+  initialIndex: number;
+  onClose: () => void;
+}) {
+  const fotos = emprendimiento.fotos.filter((foto) => Boolean(getAttachmentSource(foto)));
+  const [activeIndex, setActiveIndex] = useState(() => Math.min(Math.max(initialIndex, 0), Math.max(fotos.length - 1, 0)));
+  const activeFoto = fotos[activeIndex] ?? fotos[0];
+  const whatsappHref = emprendimiento.whatsapp ? buildWhatsappUrl(emprendimiento.whatsapp, `Hola, vi tu emprendimiento ${emprendimiento.nombre} en la central y quiero consultar.`) : "";
+
+  useEffect(() => {
+    if (!fotos.length) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "ArrowLeft") setActiveIndex((current) => (current - 1 + fotos.length) % fotos.length);
+      if (event.key === "ArrowRight") setActiveIndex((current) => (current + 1) % fotos.length);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fotos.length, onClose]);
+
+  if (!activeFoto) return null;
+
+  const goPrevious = () => setActiveIndex((current) => (current - 1 + fotos.length) % fotos.length);
+  const goNext = () => setActiveIndex((current) => (current + 1) % fotos.length);
+
+  return (
+    <div className="modal-backdrop public-gallery-backdrop" role="presentation" onClick={onClose}>
+      <section className="public-gallery-modal" role="dialog" aria-modal="true" aria-labelledby="public-gallery-title" onClick={(event) => event.stopPropagation()}>
+        <header>
+          <div>
+            <p className="eyebrow">{emprendimiento.rubro || "Emprendimiento local"}</p>
+            <h2 id="public-gallery-title">{emprendimiento.nombre}</h2>
+            <span>{persona?.nombre ?? "Participante del centro"} · {activeIndex + 1}/{fotos.length}</span>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Cerrar galeria">
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="public-gallery-stage">
+          {fotos.length > 1 && (
+            <button type="button" className="public-gallery-nav previous" onClick={goPrevious} aria-label="Foto anterior">
+              <ChevronLeft size={22} />
+            </button>
+          )}
+          <img src={getAttachmentSource(activeFoto)} alt={`${emprendimiento.nombre}: ${activeFoto.nombre}`} />
+          {fotos.length > 1 && (
+            <button type="button" className="public-gallery-nav next" onClick={goNext} aria-label="Foto siguiente">
+              <ChevronRight size={22} />
+            </button>
+          )}
+        </div>
+
+        <footer>
+          <div className="public-gallery-thumbs" aria-label="Fotos disponibles">
+            {fotos.map((foto, index) => (
+              <button
+                type="button"
+                key={foto.id}
+                className={index === activeIndex ? "active" : ""}
+                onClick={() => setActiveIndex(index)}
+                aria-label={`Ver foto ${index + 1}`}
+              >
+                <img src={getAttachmentSource(foto)} alt={foto.nombre} />
+              </button>
+            ))}
+          </div>
+          <div className="public-gallery-actions">
+            {whatsappHref && <a className="primary-button" href={whatsappHref} target="_blank" rel="noreferrer"><MessageCircle size={16} /> Contactar</a>}
+            <button className="secondary-button" onClick={onClose}>Cerrar</button>
+          </div>
+        </footer>
+      </section>
+    </div>
   );
 }
 

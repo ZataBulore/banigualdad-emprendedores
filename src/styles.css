@@ -773,6 +773,7 @@ label.secondary-button:hover,
 }
 
 .public-venture-media {
+  position: relative;
   display: grid;
   min-height: 170px;
   place-items: center;
@@ -780,12 +781,49 @@ label.secondary-button:hover,
   color: var(--section-accent);
 }
 
-.public-venture-media img {
+.public-venture-photo-button {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 170px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.public-venture-media img,
+.public-venture-photo-button img {
   width: 100%;
   height: 100%;
   min-height: 170px;
   max-height: 240px;
   object-fit: cover;
+}
+
+.public-venture-photo-button span {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(26, 34, 31, 0.78);
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  padding: 6px 9px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.public-venture-photo-button:focus-visible {
+  outline: 3px solid rgba(50, 118, 93, 0.35);
+  outline-offset: -3px;
 }
 
 .public-venture-content {
@@ -840,6 +878,130 @@ label.secondary-button:hover,
 }
 
 .public-card-actions a {
+  text-decoration: none;
+}
+
+.public-gallery-backdrop {
+  z-index: 35;
+  place-items: center;
+  background: rgba(22, 25, 24, 0.58);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.public-gallery-modal {
+  display: grid;
+  width: min(920px, calc(100vw - 20px));
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.34);
+}
+
+.public-gallery-modal header,
+.public-gallery-modal footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.public-gallery-modal h2 {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  line-height: 1.15;
+}
+
+.public-gallery-modal header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.public-gallery-stage {
+  position: relative;
+  display: grid;
+  min-height: 280px;
+  max-height: min(62dvh, 580px);
+  place-items: center;
+  overflow: hidden;
+  background: #17211d;
+}
+
+.public-gallery-stage img {
+  width: 100%;
+  height: 100%;
+  max-height: min(62dvh, 580px);
+  object-fit: contain;
+}
+
+.public-gallery-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(18, 24, 22, 0.72);
+  color: #ffffff;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.public-gallery-nav.previous {
+  left: 10px;
+}
+
+.public-gallery-nav.next {
+  right: 10px;
+}
+
+.public-gallery-thumbs {
+  display: flex;
+  min-width: 0;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.public-gallery-thumbs button {
+  flex: 0 0 auto;
+  width: 58px;
+  height: 48px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.public-gallery-thumbs button.active {
+  border-color: var(--section-accent);
+}
+
+.public-gallery-thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.public-gallery-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.public-gallery-actions a {
   text-decoration: none;
 }
 
@@ -5563,5 +5725,44 @@ textarea:disabled {
 
   .public-venture-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .public-gallery-backdrop {
+    place-items: center;
+    padding: 10px;
+  }
+
+  .public-gallery-modal {
+    width: min(100%, 430px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .public-gallery-modal header,
+  .public-gallery-modal footer {
+    padding: 10px;
+  }
+
+  .public-gallery-modal footer {
+    display: grid;
+  }
+
+  .public-gallery-stage {
+    min-height: 260px;
+    max-height: 55dvh;
+  }
+
+  .public-gallery-stage img {
+    max-height: 55dvh;
+  }
+
+  .public-gallery-actions {
+    justify-content: stretch;
+  }
+
+  .public-gallery-actions .primary-button,
+  .public-gallery-actions .secondary-button {
+    width: 100%;
   }
 }
