@@ -48,6 +48,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTesoreria } from "./hooks/useTesoreria";
 import { cloudBackendName, getCloudMissingConfig, isCloudConfigured } from "./services/cloudState";
 import {
@@ -2770,6 +2771,60 @@ function NegreteWeatherPill() {
     ? formatWeatherNumber(weather.temperature, "°")
     : status === "loading" ? "..." : "--°";
   const description = weather ? getWeatherDescription(weather.code) : "Clima de Negrete";
+  const detailsModal = detailsOpen ? (
+    <div className="weather-modal-backdrop" role="presentation" onClick={() => setDetailsOpen(false)}>
+      <section
+        className="weather-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalle del clima de Negrete"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div className="weather-modal-title">
+            <span className="weather-modal-icon">{getWeatherIcon(weather ?? undefined)}</span>
+            <div>
+              <p className="eyebrow">Clima en Negrete</p>
+              <h2>
+                {status === "ready" && weather
+                  ? `${formatWeatherNumber(weather.temperature, "°C")} · ${description}`
+                  : status === "loading" ? "Actualizando clima..." : "Clima no disponible"}
+              </h2>
+            </div>
+          </div>
+          <button className="icon-button" type="button" onClick={() => setDetailsOpen(false)} aria-label="Cerrar clima">
+            <X size={17} />
+          </button>
+        </header>
+
+        {status === "ready" && weather ? (
+          <>
+            <div className="weather-modal-summary">
+              <strong>{formatWeatherNumber(weather.temperature, "°C")}</strong>
+              <span>Sensacion {formatWeatherNumber(weather.apparent, "°C")}</span>
+              <span>Max {formatWeatherNumber(weather.max, "°")} / Min {formatWeatherNumber(weather.min, "°")}</span>
+            </div>
+            <div className="weather-modal-grid">
+              <span><Droplets size={16} /> Humedad <strong>{formatWeatherNumber(weather.humidity, "%")}</strong></span>
+              <span><CloudRain size={16} /> Lluvia <strong>{formatWeatherNumber(weather.rainChance, "%")}</strong></span>
+              <span><Wind size={16} /> Viento <strong>{formatWeatherNumber(weather.wind, " km/h")}</strong></span>
+              <span><Thermometer size={16} /> Precipitacion <strong>{formatWeatherNumber(weather.precipitation, " mm")}</strong></span>
+            </div>
+          </>
+        ) : (
+          <p className="weather-modal-note">
+            {status === "loading"
+              ? "Estamos consultando la fuente gratuita de clima para la zona."
+              : "No se pudo cargar el clima en este momento. Intenta nuevamente en unos minutos."}
+          </p>
+        )}
+
+        <footer>
+          <small>{status === "ready" && updatedAtLabel ? `Actualizado ${updatedAtLabel} · Datos: Open-Meteo.` : "Datos: Open-Meteo."}</small>
+        </footer>
+      </section>
+    </div>
+  ) : null;
 
   return (
     <>
@@ -2784,60 +2839,7 @@ function NegreteWeatherPill() {
         <strong>{temperatureLabel}</strong>
       </button>
 
-      {detailsOpen && (
-        <div className="weather-modal-backdrop" role="presentation" onClick={() => setDetailsOpen(false)}>
-          <section
-            className="weather-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Detalle del clima de Negrete"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header>
-              <div className="weather-modal-title">
-                <span className="weather-modal-icon">{getWeatherIcon(weather ?? undefined)}</span>
-                <div>
-                  <p className="eyebrow">Clima en Negrete</p>
-                  <h2>
-                    {status === "ready" && weather
-                      ? `${formatWeatherNumber(weather.temperature, "°C")} · ${description}`
-                      : status === "loading" ? "Actualizando clima..." : "Clima no disponible"}
-                  </h2>
-                </div>
-              </div>
-              <button className="icon-button" type="button" onClick={() => setDetailsOpen(false)} aria-label="Cerrar clima">
-                <X size={17} />
-              </button>
-            </header>
-
-            {status === "ready" && weather ? (
-              <>
-                <div className="weather-modal-summary">
-                  <strong>{formatWeatherNumber(weather.temperature, "°C")}</strong>
-                  <span>Sensacion {formatWeatherNumber(weather.apparent, "°C")}</span>
-                  <span>Max {formatWeatherNumber(weather.max, "°")} / Min {formatWeatherNumber(weather.min, "°")}</span>
-                </div>
-                <div className="weather-modal-grid">
-                  <span><Droplets size={16} /> Humedad <strong>{formatWeatherNumber(weather.humidity, "%")}</strong></span>
-                  <span><CloudRain size={16} /> Lluvia <strong>{formatWeatherNumber(weather.rainChance, "%")}</strong></span>
-                  <span><Wind size={16} /> Viento <strong>{formatWeatherNumber(weather.wind, " km/h")}</strong></span>
-                  <span><Thermometer size={16} /> Precipitacion <strong>{formatWeatherNumber(weather.precipitation, " mm")}</strong></span>
-                </div>
-              </>
-            ) : (
-              <p className="weather-modal-note">
-                {status === "loading"
-                  ? "Estamos consultando la fuente gratuita de clima para la zona."
-                  : "No se pudo cargar el clima en este momento. Intenta nuevamente en unos minutos."}
-              </p>
-            )}
-
-            <footer>
-              <small>{status === "ready" && updatedAtLabel ? `Actualizado ${updatedAtLabel} · Datos: Open-Meteo.` : "Datos: Open-Meteo."}</small>
-            </footer>
-          </section>
-        </div>
-      )}
+      {detailsModal ? createPortal(detailsModal, document.body) : null}
     </>
   );
 }
